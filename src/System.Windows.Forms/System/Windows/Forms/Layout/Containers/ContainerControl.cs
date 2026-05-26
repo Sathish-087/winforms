@@ -1596,8 +1596,12 @@ public class ContainerControl : ScrollableControl, IContainerControl
                         innerMostFCC._focusedControl = null;
                         if (innerMostFCC.ParentInternal is not (not null and MdiClient))
                         {
-                            // Don't reset the active control of a MDIChild that loses the focus
-                            innerMostFCC._activeControl = null;
+                            // Fix: MDI child form with ContainerControl/SplitContainer control activation bug: the control that gets focus is not the one that was previously focused.
+                            if (!IsInsideMdiClient(innerMostFCC))
+                            {
+                                // Don't reset the active control of a MDIChild that loses the focus
+                                innerMostFCC._activeControl = null;
+                            }
                         }
                     }
                 }
@@ -1607,7 +1611,9 @@ public class ContainerControl : ScrollableControl, IContainerControl
                     // innerMostFCC.ParentInternal can be null when the ActiveControl is deleted.
                     if (innerMostFCC.ParentInternal is not null)
                     {
-                        ContainerControl? containerControl = innerMostFCC.ParentInternal.GetContainerControl() as ContainerControl;
+                        // Some controls (like MDIChild forms) can be parented directly to an MdiClient. In that case, we need to go one level up to find the ContainerControl and reset its active control.
+                        bool isInsideMdiClient = IsInsideMdiClient(innerMostFCC);
+                        ContainerControl? containerControl = !isInsideMdiClient ? innerMostFCC.ParentInternal.GetContainerControl() as ContainerControl : innerMostFCC.ParentInternal.ParentInternal?.GetContainerControl() as ContainerControl;
                         stopControl = containerControl;
                         if (containerControl is not null && containerControl != this)
                         {
@@ -1665,6 +1671,20 @@ public class ContainerControl : ScrollableControl, IContainerControl
         if (_activeControl is not null)
         {
             EnterValidation(_activeControl);
+        }
+
+        static bool IsInsideMdiClient(Control control)
+        {
+            Control? current = control;
+            while (current is not null)
+            {
+                if (current is MdiClient)
+                    return true;
+
+                current = current.ParentInternal;
+            }
+
+            return false;
         }
     }
 
