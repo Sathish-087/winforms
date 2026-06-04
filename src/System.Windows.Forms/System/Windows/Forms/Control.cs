@@ -9304,6 +9304,13 @@ public unsafe partial class Control :
             {
                 SetState(States.Recreate, false);
 
+                //// Keep top-level dark mode window attributes in sync after handle recreation.
+                //// This mirrors the dark mode preparation done from SetVisibleCore.
+                if (GetTopLevel() && Application.ColorModeSet && DarkModeRequestState is true)
+                {
+                    PrepareDarkMode(HWND, Application.IsDarkModeEnabled);
+                }
+
                 // Inform children their parent's handle has been created.
                 // This means
                 // an Exception gets thrown before/during the invocation of DestroyHandle.
