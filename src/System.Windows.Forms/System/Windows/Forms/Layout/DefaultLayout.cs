@@ -1064,6 +1064,12 @@ internal partial class DefaultLayout : LayoutEngine
                 dictionary.Remove(entry.Key);
 #endif
                 Rectangle bounds = (Rectangle)entry.Value!;
+                if (bounds.Width > container.Bounds.Width || bounds.Height > container.Bounds.Height)
+                {
+                    //// We have a control that is larger than the container. This can happen when the container is autosized to its preferred size, and the preferred size is smaller than the size of some of its children. In this case, we want to make sure the control is still visible, so we intersect the bounds with the container bounds.
+                    bounds.Intersect(container.Bounds);
+                }
+
                 element.SetBounds(bounds, BoundsSpecified.None);
 #if DEBUG
                 break;
