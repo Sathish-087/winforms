@@ -1222,6 +1222,11 @@ public unsafe partial class Control :
             {
                 if (cacheTextCounter == 0)
                 {
+                    if (_text is not null && this is Label label && label.Text != _text)
+                    {
+                        _text = null;
+                    }
+
                     Properties.AddOrRemoveValue(s_cacheTextFieldProperty, _text);
                     _text ??= WindowText;
                 }
