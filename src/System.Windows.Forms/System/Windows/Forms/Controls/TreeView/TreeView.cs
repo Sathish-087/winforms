@@ -3162,6 +3162,17 @@ public partial class TreeView : Control
                 }
 
                 break;
+            case PInvokeCore.WM_CTLCOLOREDIT:
+                if (Application.IsDarkModeEnabled && DarkModeRequestState is true)
+                {
+                    IntPtr hdc = (nint)m.WParamInternal;
+                    int backColor = ColorTranslator.ToWin32(SystemColors.Window);
+                    int textColor = ColorTranslator.ToWin32(SystemColors.WindowText);
+                    PInvokeCore.SetTextColor((HDC)hdc, textColor);
+                    PInvokeCore.SetBkColor((HDC)hdc, backColor);
+                }
+
+                break;
             case PInvokeCore.WM_HSCROLL:
                 base.WndProc(ref m);
                 if (DrawMode == TreeViewDrawMode.OwnerDrawAll)

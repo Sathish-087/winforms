@@ -6973,6 +6973,18 @@ public partial class ListView : Control
                 WmReflectNotify(ref m);
                 break;
 
+            case PInvokeCore.WM_CTLCOLOREDIT:
+                if (Application.IsDarkModeEnabled && DarkModeRequestState is true)
+                {
+                    IntPtr hdc = (nint)m.WParamInternal;
+                    int backColor = ColorTranslator.ToWin32(SystemColors.Window);
+                    int textColor = ColorTranslator.ToWin32(SystemColors.WindowText);
+                    PInvokeCore.SetTextColor((HDC)hdc, textColor);
+                    PInvokeCore.SetBkColor((HDC)hdc, backColor);
+                }
+
+                break;
+
             case PInvokeCore.WM_KEYUP:
                 var key = (VIRTUAL_KEY)(uint)m.WParamInternal;
 
