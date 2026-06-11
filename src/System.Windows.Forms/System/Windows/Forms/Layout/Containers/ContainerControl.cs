@@ -840,6 +840,29 @@ public class ContainerControl : ScrollableControl, IContainerControl
             AxContainerFormCreated();
         }
 
+        //// If the control is SplitContainer, then need trigger scaling, then only SplitConatainer child controls can get correct font from parent and scale properly.
+        if (this is SplitContainer && RequiredScalingEnabled && AutoScaleMode != AutoScaleMode.None)
+        {
+            // If the font changes and we are going to autoscale
+            // as a result, do it now, and wrap the entire
+            // transaction in a suspend layout to prevent
+            // the layout engines from conflicting with our
+            // work.
+            SuspendAllLayout(this);
+
+            try
+            {
+                // Parameter 'causedByFontChanged' helps to differentiate the scaling between ResumeLayout and FontChanged event.
+                PerformAutoScale(!RequiredScalingEnabled, excludedBounds: true, causedByFontChanged: true);
+            }
+            finally
+            {
+                ResumeAllLayout(this, performLayout: false);
+            }
+
+            RequiredScalingEnabled = false;
+        }
+
         OnBindingContextChanged(EventArgs.Empty);
     }
 
@@ -873,6 +896,10 @@ public class ContainerControl : ScrollableControl, IContainerControl
             {
                 ResumeAllLayout(this, performLayout: false);
             }
+        }
+        else if (this is SplitContainer splitContainer && !splitContainer.IsHandleCreated && AutoScaleMode != AutoScaleMode.None)
+        {
+            RequiredScalingEnabled = true;
         }
 
         base.OnFontChanged(e);
