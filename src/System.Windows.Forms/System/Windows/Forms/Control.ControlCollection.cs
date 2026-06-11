@@ -100,6 +100,14 @@ public partial class Control
                     // would make us short-circuit the rest of the reparenting logic.
                     // you could end up with a control half reparented.
                     value.AssignParent(Owner);
+                    if (Owner is ContainerControl container)
+                    {
+                        SizeF factor = container._initialAutoScaleFactor;
+                        if ((factor.Width != 1.0f || factor.Height != 1.0f) && !factor.IsEmpty)
+                        {
+                            value.Scale(factor);
+                        }
+                    }
                 }
                 finally
                 {
