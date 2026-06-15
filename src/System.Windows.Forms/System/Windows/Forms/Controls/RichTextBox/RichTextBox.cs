@@ -3494,6 +3494,16 @@ public partial class RichTextBox : TextBoxBase
 
             case PInvokeCore.WM_SETFONT:
                 WmSetFont(ref m);
+                if (_textRtf is not null && Rtf != _textRtf)
+                {
+                    Rtf = _textRtf;
+                }
+
+                break;
+
+            case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
+                _textRtf = Rtf;
+                base.WndProc(ref m);
                 break;
 
             case PInvokeCore.WM_IME_NOTIFY:
