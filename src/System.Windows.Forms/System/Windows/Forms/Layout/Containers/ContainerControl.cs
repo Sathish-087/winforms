@@ -83,12 +83,6 @@ public class ContainerControl : ScrollableControl, IContainerControl
     internal SizeF _currentAutoScaleFactor = new(1F, 1F);
 
     /// <summary>
-    /// Store the initial auto scale factor for the child Container control that inherit <see cref="AutoScaleMode"/>.
-    /// This is used to calculate the correct auto scale factor for the child Container control while add controls dynamically.
-    /// </summary>
-    internal SizeF _initialAutoScaleFactor = SizeF.Empty;
-
-    /// <summary>
     ///  Initializes a new instance of the <see cref="ContainerControl"/> class.
     /// </summary>
     public ContainerControl() : base()
@@ -894,6 +888,20 @@ public class ContainerControl : ScrollableControl, IContainerControl
     }
 
     /// <summary>
+    /// Called when a control is added to the container.
+    /// </summary>
+    protected override void OnControlAdded(ControlEventArgs e)
+    {
+        SizeF factor = _currentAutoScaleFactor;
+        if (e.Control is not null && (factor.Width != 1.0f || factor.Height != 1.0f))
+        {
+            e.Control.Scale(factor);
+        }
+
+        base.OnControlAdded(e);
+    }
+
+    /// <summary>
     ///  Called when the last resume layout call is made. If performLayout is true a layout will
     ///  occur as soon as this call returns. Layout is still suspended when this call is made.
     ///  The default implementation calls OnChildLayoutResuming on the parent, if it exists.
@@ -966,10 +974,6 @@ public class ContainerControl : ScrollableControl, IContainerControl
                 suspended = true;
 
                 SizeF autoScaleFactor = AutoScaleFactor;
-                if (_initialAutoScaleFactor.IsEmpty)
-                {
-                    _initialAutoScaleFactor = autoScaleFactor;
-                }
 
                 // Container controls at child level that inherit autoscale mode but does not store
                 // AutoScaleDimensions, we would need to scale those controls with their parent AutoScaleFactor.
