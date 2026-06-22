@@ -1389,6 +1389,17 @@ public class ContainerControl : ScrollableControl, IContainerControl
             // Bounds are being scaled for the top-level window via SuggestedRectangle. We would need to skip scaling of
             // this control further by the 'OnFontChanged' event.
             _isScaledByDpiChangedEvent = true;
+            if (IsHandleCreated)
+            {
+                PInvoke.SetWindowPos(
+                    this,
+                    HWND.HWND_TOP,
+                    suggestedRectangle.X,
+                    suggestedRectangle.Y,
+                    suggestedRectangle.Width,
+                    suggestedRectangle.Height,
+                    SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            }
 
             Font fontForDpi = GetScaledFont(Font, deviceDpiNew, deviceDpiOld);
             ScaledControlFont = fontForDpi;
@@ -1402,18 +1413,6 @@ public class ContainerControl : ScrollableControl, IContainerControl
                 {
                     OnFontChanged(EventArgs.Empty);
                 }
-            }
-
-            if (IsHandleCreated)
-            {
-                PInvoke.SetWindowPos(
-                    this,
-                    HWND.HWND_TOP,
-                    suggestedRectangle.X,
-                    suggestedRectangle.Y,
-                    suggestedRectangle.Width,
-                    suggestedRectangle.Height,
-                    SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
         }
         finally
