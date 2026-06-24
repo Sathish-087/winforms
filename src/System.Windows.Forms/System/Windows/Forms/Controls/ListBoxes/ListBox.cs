@@ -2483,6 +2483,11 @@ public partial class ListBox : ListControl
 
                 break;
 
+            case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
+                RecreateHandle();
+                base.WndProc(ref m);
+                break;
+
             default:
                 base.WndProc(ref m);
                 break;
