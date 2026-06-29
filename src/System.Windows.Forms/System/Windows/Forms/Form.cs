@@ -4219,6 +4219,11 @@ public partial class Form : ContainerControl
     [EditorBrowsable(EditorBrowsableState.Advanced)]
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        if (MdiParent is not null)
+        {
+            s_isRecreatingMdiChild = true;
+        }
+
         base.OnHandleDestroyed(e);
         _formStateEx[s_formStateExUseMdiChildProc] = 0;
 

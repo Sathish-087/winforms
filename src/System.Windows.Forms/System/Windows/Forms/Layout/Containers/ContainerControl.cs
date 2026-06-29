@@ -83,6 +83,11 @@ public class ContainerControl : ScrollableControl, IContainerControl
     internal SizeF _currentAutoScaleFactor = new(1F, 1F);
 
     /// <summary>
+    /// To check if need to scale the MdiChild during after FontChanged.
+    /// </summary>
+    internal static bool s_isRecreatingMdiChild;
+
+    /// <summary>
     ///  Initializes a new instance of the <see cref="ContainerControl"/> class.
     /// </summary>
     public ContainerControl() : base()
@@ -1104,6 +1109,10 @@ public class ContainerControl : ScrollableControl, IContainerControl
                     ourExternalContainerFactor = SizeF.Empty;
 
                     bool scaleUs = (requestingControl != this || _state[s_stateParentChanged] || causedByFontChanged);
+                    if (scaleUs && IsHandleCreated && s_isRecreatingMdiChild)
+                    {
+                        scaleUs = false;
+                    }
 
                     // For design time support:  we may be parented within another form
                     // that is not part of the designer.
@@ -1368,6 +1377,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
     {
         CommonProperties.xClearAllPreferredSizeCaches(this);
         SuspendAllLayout(this);
+        s_isRecreatingMdiChild = false;
         try
         {
             if (AppContextSwitches.ScaleTopLevelFormMinMaxSizeForDpi)
@@ -1390,6 +1400,18 @@ public class ContainerControl : ScrollableControl, IContainerControl
             // this control further by the 'OnFontChanged' event.
             _isScaledByDpiChangedEvent = true;
 
+            if (IsHandleCreated)
+            {
+                PInvoke.SetWindowPos(
+                    this,
+                    HWND.HWND_TOP,
+                    suggestedRectangle.X,
+                    suggestedRectangle.Y,
+                    suggestedRectangle.Width,
+                    suggestedRectangle.Height,
+                    SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            }
+
             Font fontForDpi = GetScaledFont(Font, deviceDpiNew, deviceDpiOld);
             ScaledControlFont = fontForDpi;
             if (IsFontSet())
@@ -1402,18 +1424,6 @@ public class ContainerControl : ScrollableControl, IContainerControl
                 {
                     OnFontChanged(EventArgs.Empty);
                 }
-            }
-
-            if (IsHandleCreated)
-            {
-                PInvoke.SetWindowPos(
-                    this,
-                    HWND.HWND_TOP,
-                    suggestedRectangle.X,
-                    suggestedRectangle.Y,
-                    suggestedRectangle.Width,
-                    suggestedRectangle.Height,
-                    SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
         }
         finally

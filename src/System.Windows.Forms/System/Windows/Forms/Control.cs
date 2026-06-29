@@ -9706,10 +9706,18 @@ public unsafe partial class Control :
         {
             Control child = children[i];
 
-            // ContainerControls get their own OnFontChanged Events and scale.
-            // If this scaling is caused by ResumeLayout instead of OnFontChanged,
-            // We would be scaling all container controls.
-            if (child is ContainerControl && causedByFontChanged)
+            // ContainerControls get their own OnFontChanged Events and scale themselves.
+            // Skip them only if they have a handle and AutoScaleMode is not None,
+            // meaning they will process their own OnFontChanged and scale independently.
+            // A ContainerControl without a handle (e.g. a UserControl on a form being shown
+            // for the first time on a different-DPI monitor) will NOT receive its own
+            // OnFontChanged via RescaleConstantsForDpi, so it must NOT be skipped here —
+            // otherwise its bounds remain stale and DefaultLayout.UpdateAnchorInfo will
+            // record incorrect anchor positions.
+            if (child is ContainerControl containerChild
+               && causedByFontChanged
+               && containerChild.IsHandleCreated
+               && containerChild.AutoScaleMode != AutoScaleMode.None)
             {
                 continue;
             }
