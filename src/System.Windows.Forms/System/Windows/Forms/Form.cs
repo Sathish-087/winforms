@@ -4961,10 +4961,23 @@ public partial class Form : ContainerControl
         GC.KeepAlive(this);
     }
 
-    private void SetFormTitleProperties()
+    private unsafe void SetFormTitleProperties()
     {
         if (TopLevel && IsHandleCreated)
         {
+            // Re-apply the dark-mode title bar flag. DWM window attributes are not preserved
+            // across handle recreation, so DWMWA_USE_IMMERSIVE_DARK_MODE must be restored
+            // here alongside the other DWM attributes.
+            if (Application.ColorModeSet && DarkModeRequestState is true)
+            {
+                BOOL isDark = Application.IsDarkModeEnabled;
+                PInvoke.DwmSetWindowAttribute(
+                    HWND,
+                    DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    &isDark,
+                    (uint)sizeof(BOOL)).AssertSuccess();
+            }
+
             if (Properties.TryGetValue(s_propFormBorderColor, out Color? formBorderColor))
             {
                 SetFormAttributeColorInternal(DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR, formBorderColor.Value);
