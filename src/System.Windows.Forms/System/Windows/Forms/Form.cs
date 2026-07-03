@@ -2173,6 +2173,15 @@ public partial class Form : ContainerControl
         if (!IsMdiChild)
         {
             base.SetVisibleCore(value);
+            if (!value
+                && OwnerInternal is Form owner
+                && owner.Visible
+                && owner.IsHandleCreated
+                && !owner.IsDisposed
+                && !owner.Active)
+            {
+                owner.Activate();
+            }
 
             // We need to force this call if we were created
             // with a STARTUPINFO structure (e.g. launched from explorer), since
