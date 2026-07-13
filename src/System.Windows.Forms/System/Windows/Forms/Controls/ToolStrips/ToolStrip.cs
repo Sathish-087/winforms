@@ -3748,11 +3748,34 @@ public partial class ToolStrip : ScrollableControl, IArrangedElement, ISupportTo
                     {
                         item.Font = local.WithSize(local.Size * factor);
                     }
+
+                    // ToolStripControlHost-based items host real controls, such as TextBox and ComboBox.
+                    // Their bounds need to be updated during ToolStrip DPI transition.
+                    RescaleHostedControlBoundsForDpi(item, deviceDpiOld, deviceDpiNew);
                 }
 
                 // We need to delegate this "event" to the Controls/Components, which are
                 // not directly affected by this, but need to consume.
                 _rescaleConstsCallbackDelegate?.Invoke(deviceDpiOld, deviceDpiNew);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rescales the bounds of hosted controls in ToolStripControlHost items for DPI changes.
+    /// </summary>
+    private static void RescaleHostedControlBoundsForDpi(ToolStripItem item, int deviceDpiOld, int deviceDpiNew)
+    {
+        if (item is ToolStripControlHost controlHost)
+        {
+            controlHost.RescaleHostedControlBoundsForDpi(deviceDpiOld, deviceDpiNew);
+        }
+
+        if (item is ToolStripDropDownItem dropDownItem && dropDownItem.HasDropDownItems)
+        {
+            foreach (ToolStripItem dropDownChildItem in dropDownItem.DropDownItems)
+            {
+                RescaleHostedControlBoundsForDpi(dropDownChildItem, deviceDpiOld, deviceDpiNew);
             }
         }
     }
