@@ -203,9 +203,23 @@ internal sealed partial class KeyboardToolTipStateMachine
             return SmState.Shown;
         }
 
+        IKeyboardToolTip toolToShow = _currentTool;
         if (!_currentTool.IsHoveredWithMouse())
         {
-            toolTip.ShowKeyboardToolTip(toolTipText, _currentTool, autoPopDelay);
+            // ShowKeyboardToolTip raises Popup synchronously. An app handler can move focus
+            // (e.g. Focus another control), which re-enters this state machine via
+            // NotifyAboutLostFocus / NotifyAboutGotFocus and may clear _currentTool or leave
+            // _currentState in anything other than ReadyForInitShow / ReadyForReshow.
+            toolTip.ShowKeyboardToolTip(toolTipText, toolToShow, autoPopDelay);
+        }
+        
+        // If reentrancy changed the tool or advanced the FSM, do not finish this show path:
+        // scheduling a dismiss timer (often with a null tool) or forcing SmState.Shown would
+        // corrupt state and/or throw (ArgumentNullException / KeyNotFoundException).
+        // Return the live _currentState so nested Transit results are preserved.
+        if (_currentTool != toolToShow || (_currentState != SmState.ReadyForInitShow && _currentState != SmState.ReadyForReshow))
+        {
+            return _currentState;
         }
 
         if (!toolTip.IsPersistent)
