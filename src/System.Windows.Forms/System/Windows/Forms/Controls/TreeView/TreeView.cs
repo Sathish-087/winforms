@@ -3163,10 +3163,6 @@ public partial class TreeView : Control
 
                 break;
             case PInvokeCore.WM_CTLCOLOREDIT:
-                // The native label-edit control created for in-place item editing is a plain Win32 Edit
-                // control, not a WinForms Control, so the base WmCtlColorControl handling (which looks it up
-                // via FromHandle) can't find it and falls back to default (light-themed) system rendering.
-                // Explicitly color it to match this ListView's own (already dark-mode-aware) colors.
                 if (_labelEdit is not null && (HWND)m.LParamInternal == _labelEdit.HWND)
                 {
                     m.ResultInternal = (LRESULT)(nint)InitializeDCForWmCtlColor((HDC)(nint)m.WParamInternal, m.MsgInternal);
