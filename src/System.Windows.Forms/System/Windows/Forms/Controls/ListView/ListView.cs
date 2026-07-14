@@ -6974,13 +6974,17 @@ public partial class ListView : Control
                 break;
 
             case PInvokeCore.WM_CTLCOLOREDIT:
-                if (Application.IsDarkModeEnabled && DarkModeRequestState is true)
+                // The native label-edit control created for in-place item editing is a plain Win32 Edit
+                // control, not a WinForms Control, so the base WmCtlColorControl handling (which looks it up
+                // via FromHandle) can't find it and falls back to default (light-themed) system rendering.
+                // Explicitly color it to match this ListView's own (already dark-mode-aware) colors.
+                if (_labelEdit is not null && (HWND)m.LParamInternal == _labelEdit.HWND)
                 {
-                    IntPtr hdc = (nint)m.WParamInternal;
-                    int backColor = ColorTranslator.ToWin32(SystemColors.Window);
-                    int textColor = ColorTranslator.ToWin32(SystemColors.WindowText);
-                    PInvokeCore.SetTextColor((HDC)hdc, textColor);
-                    PInvokeCore.SetBkColor((HDC)hdc, backColor);
+                    m.ResultInternal = (LRESULT)(nint)InitializeDCForWmCtlColor((HDC)(nint)m.WParamInternal, m.MsgInternal);
+                }
+                else
+                {
+                    base.WndProc(ref m);
                 }
 
                 break;
