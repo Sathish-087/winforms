@@ -796,7 +796,7 @@ public partial class PrintPreviewDialog : Form
             _closeToolStripButton);
 
         _toolStrip1.Name = "toolStrip1";
-
+        _toolStrip1.AutoSize = true;
         _toolStrip1.GripStyle = ToolStripGripStyle.Hidden;
 
         _printToolStripButton.DisplayStyle = ToolStripItemDisplayStyle.Image;
