@@ -349,6 +349,9 @@ public sealed partial class Application
 #pragma warning disable SYSLIB5002 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
                 SystemColors.UseAlternativeColorSet = darkModeEnabled;
 #pragma warning restore SYSLIB5002 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+                // Reset the system brushes and pens so that they are recreated with the new color set.
+                SystemBrushes.Reset();
+                SystemPens.Reset();
                 NotifySystemEventsOfColorChange();
             }
         }

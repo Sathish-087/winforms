@@ -51,6 +51,12 @@ public static class SystemPens
     public static Pen WindowFrame => FromSystemColor(SystemColors.WindowFrame);
     public static Pen WindowText => FromSystemColor(SystemColors.WindowText);
 
+    /// <summary>
+    /// Drops the thread-local system pen cache so the next FromSystemColor
+    /// rebuilds pens against the current SystemColors table.
+    /// </summary>
+    public static void Reset() => Gdip.ThreadData.Remove(s_systemPensKey);
+
     public static Pen FromSystemColor(Color c)
     {
         if (!c.IsSystemColor)

@@ -50,6 +50,12 @@ public static class SystemBrushes
     public static Brush WindowFrame => FromSystemColor(SystemColors.WindowFrame);
     public static Brush WindowText => FromSystemColor(SystemColors.WindowText);
 
+    /// <summary>
+    /// Drops the thread-local system brush cache so the next FromSystemColor
+    /// rebuilds brushes against the current SystemColors table.
+    /// </summary>
+    public static void Reset() => Gdip.ThreadData.Remove(s_systemBrushesKey);
+
     public static Brush FromSystemColor(Color c)
     {
         if (!c.IsSystemColor)
