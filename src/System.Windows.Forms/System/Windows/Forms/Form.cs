@@ -4961,7 +4961,7 @@ public partial class Form : ContainerControl
         GC.KeepAlive(this);
     }
 
-    private unsafe void SetFormTitleProperties()
+    private void SetFormTitleProperties()
     {
         if (TopLevel && IsHandleCreated)
         {
@@ -4970,12 +4970,7 @@ public partial class Form : ContainerControl
             // here alongside the other DWM attributes.
             if (Application.ColorModeSet && DarkModeRequestState is true)
             {
-                BOOL isDark = Application.IsDarkModeEnabled;
-                PInvoke.DwmSetWindowAttribute(
-                    HWND,
-                    DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE,
-                    &isDark,
-                    (uint)sizeof(BOOL)).AssertSuccess();
+                SetFormImmersiveDarkModeInternal(Application.IsDarkModeEnabled);
             }
 
             if (Properties.TryGetValue(s_propFormBorderColor, out Color? formBorderColor))
@@ -4998,6 +4993,16 @@ public partial class Form : ContainerControl
                 SetFormCornerPreferenceInternal(cornerPreference.Value);
             }
         }
+    }
+
+    private unsafe void SetFormImmersiveDarkModeInternal(bool isDarkMode)
+    {
+        BOOL isDark = isDarkMode;
+        PInvoke.DwmSetWindowAttribute(
+            HWND,
+            DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &isDark,
+            (uint)sizeof(BOOL));
     }
 
     /// <summary>
