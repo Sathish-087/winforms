@@ -1,0 +1,2 @@
+override System.Windows.Forms.SplitContainer.OnCreateControl() -> void
+override System.Windows.Forms.SplitContainer.OnFontChanged(System.EventArgs! e) -> void

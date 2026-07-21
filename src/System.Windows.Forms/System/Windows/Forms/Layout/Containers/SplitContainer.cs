@@ -89,6 +89,9 @@ public partial class SplitContainer : ContainerControl, ISupportInitialize
     // Initialization flag for ISupportInitialize
     private bool _initializing;
 
+    // Required to keep track of the scaling on create control.
+    private bool _scaleOnCreateControl;
+
     public SplitContainer()
     {
         // either the left or top panel - LTR
@@ -1215,6 +1218,42 @@ public partial class SplitContainer : ContainerControl, ISupportInitialize
         {
             DrawFocus(e.Graphics, SplitterRectangle);
         }
+    }
+
+    /// <summary>
+    /// Overrides the Control.OnCreateControl() to perform scaling if required.
+    /// </summary>
+    protected override void OnCreateControl()
+    {
+        base.OnCreateControl();
+        if (_scaleOnCreateControl)
+        {
+            SuspendAllLayout(this);
+            try
+            {
+                PerformAutoScale(!RequiredScalingEnabled, excludedBounds: true, causedByFontChanged: true);
+            }
+            finally
+            {
+                ResumeAllLayout(this, performLayout: false);
+            }
+
+            _scaleOnCreateControl = false;
+        }
+    }
+
+    /// <summary>
+    /// Overrides the Control.OnFontChanged() to perform scaling if required.
+    /// </summary>
+    /// <param name="e">The event args.</param>
+    protected override void OnFontChanged(EventArgs e)
+    {
+        if (AutoScaleMode != AutoScaleMode.None && !IsHandleCreated)
+        {
+            _scaleOnCreateControl = true;
+        }
+
+        base.OnFontChanged(e);
     }
 
     /// <summary>
