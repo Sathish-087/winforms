@@ -194,7 +194,7 @@ public partial class ListView : Control
 
     private int _bkImgFileNamesCount = -1;
     private string?[]? _bkImgFileNames;
-    private const int BKIMGARRAYSIZE = 8;
+    private HBITMAP _backgroundImageHBitmap;
 
     // If the user clicked on the column divider, the native ListView fires HDN_ITEMCHANGED on each mouse up event.
     // This means that even if the user did not change the column width our wrapper will still think
@@ -3143,6 +3143,12 @@ public partial class ListView : Control
                 _bkImgFileNamesCount = -1;
             }
 
+            if (!_backgroundImageHBitmap.IsNull)
+            {
+                PInvokeCore.DeleteObject(_backgroundImageHBitmap);
+                _backgroundImageHBitmap = default;
+            }
+
             KeyboardToolTip.Dispose();
         }
 
@@ -5157,82 +5163,37 @@ public partial class ListView : Control
 
     private unsafe void SetBackgroundImage()
     {
-        // needed for OleInitialize
         Application.OleRequired();
 
+        if (!_backgroundImageHBitmap.IsNull)
+        {
+            PInvokeCore.DeleteObject(_backgroundImageHBitmap);
+            _backgroundImageHBitmap = default;
+        }
+
         LVBKIMAGEW backgroundImage = default;
-
-        // first, is there an existing temporary file to delete, remember its name
-        // so that we can delete it if the list control doesn't...
-        string fileNameToDelete = _backgroundImageFileName;
-
         if (BackgroundImage is not null)
         {
-            // save the image to a temporary file name
-            _backgroundImageFileName = Path.GetTempFileName();
+            Bitmap bitmap = BackgroundImage as Bitmap ?? new Bitmap(BackgroundImage);
+            _backgroundImageHBitmap = (HBITMAP)bitmap.GetHbitmap();
 
-            BackgroundImage.Save(_backgroundImageFileName, Drawing.Imaging.ImageFormat.Bmp);
+            backgroundImage.hbm = _backgroundImageHBitmap;
+            backgroundImage.ulFlags = LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_SOURCE_HBITMAP;
 
-            backgroundImage.cchImageMax = (uint)(_backgroundImageFileName.Length + 1);
-            backgroundImage.ulFlags = LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_SOURCE_URL;
-            if (BackgroundImageTiled)
-            {
-                backgroundImage.ulFlags |= LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_STYLE_TILE;
-            }
-            else
-            {
-                backgroundImage.ulFlags |= LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_STYLE_NORMAL;
-            }
+            backgroundImage.ulFlags |= BackgroundImageTiled
+                ? LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_STYLE_TILE
+                : LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_STYLE_NORMAL;
         }
         else
         {
             backgroundImage.ulFlags = LIST_VIEW_BACKGROUND_IMAGE_FLAGS.LVBKIF_SOURCE_NONE;
-            _backgroundImageFileName = string.Empty;
         }
 
-        fixed (char* pBackgroundImageFileName = _backgroundImageFileName)
-        {
-            backgroundImage.pszImage = pBackgroundImageFileName;
-            PInvokeCore.SendMessage(this, PInvoke.LVM_SETBKIMAGEW, (WPARAM)0, ref backgroundImage);
-        }
-
-        if (string.IsNullOrEmpty(fileNameToDelete))
-        {
-            return;
-        }
-
-        // we need to cause a paint message on the win32 list view. This way the win 32 list view gives up
-        // its reference to the previous image file it was holding on to.
-
-        // 8 strings should be good enough for us
-        if (_bkImgFileNames is null)
-        {
-            _bkImgFileNames = new string[BKIMGARRAYSIZE];
-            _bkImgFileNamesCount = -1;
-        }
-
-        if (_bkImgFileNamesCount == BKIMGARRAYSIZE - 1)
-        {
-            // it should be fine to delete the file name that was added first.
-            // if it's not fine, then increase BKIMGARRAYSIZE
-            DeleteFileName(_bkImgFileNames[0]);
-            _bkImgFileNames[0] = _bkImgFileNames[1];
-            _bkImgFileNames[1] = _bkImgFileNames[2];
-            _bkImgFileNames[2] = _bkImgFileNames[3];
-            _bkImgFileNames[3] = _bkImgFileNames[4];
-            _bkImgFileNames[4] = _bkImgFileNames[5];
-            _bkImgFileNames[5] = _bkImgFileNames[6];
-            _bkImgFileNames[6] = _bkImgFileNames[7];
-            _bkImgFileNames[7] = null;
-
-            _bkImgFileNamesCount--;
-        }
-
-        _bkImgFileNamesCount++;
-        _bkImgFileNames[_bkImgFileNamesCount] = fileNameToDelete;
-
-        // now force the paint
-        Refresh();
+        PInvokeCore.SendMessage(
+            this,
+            PInvoke.LVM_SETBKIMAGEW,
+            (WPARAM)0,
+            ref backgroundImage);
     }
 
     internal unsafe void SetColumnInfo(LVCOLUMNW_MASK mask, ColumnHeader ch)
