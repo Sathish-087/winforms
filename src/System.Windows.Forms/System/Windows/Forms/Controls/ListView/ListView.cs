@@ -6975,6 +6975,33 @@ public partial class ListView : Control
                 WmReflectNotify(ref m);
                 break;
 
+            case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
+                if (Items.Count <= 0)
+                {
+                    return;
+                }
+
+                int newDeviceDpi = (short)m.WParamInternal.LOWORD;
+                // On certain OS versions, for non-test scenarios, WParam may be empty.
+                if (newDeviceDpi == 0)
+                {
+                    newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
+                }
+
+                float factor = ((float)newDeviceDpi / OriginalDeviceDpiInternal);
+                foreach (ListViewItem rootItem in Items)
+                {
+                    if (rootItem.Font is null)
+                    {
+                        continue;
+                    }
+
+                    Font scaledFont = rootItem.Font.WithSize(rootItem.Font.Size * factor);
+                    rootItem.Font = scaledFont;
+                }
+
+                base.WndProc(ref m);
+                break;
             case PInvokeCore.WM_KEYUP:
                 var key = (VIRTUAL_KEY)(uint)m.WParamInternal;
 

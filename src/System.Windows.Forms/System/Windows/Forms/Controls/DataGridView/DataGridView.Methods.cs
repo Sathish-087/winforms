@@ -30094,6 +30094,27 @@ public partial class DataGridView
                 }
 
                 break;
+            case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
+                int newDeviceDpi = (short)m.WParamInternal.LOWORD;
+
+                // On certain OS versions, for non-test scenarios, WParam may be empty.
+                if (newDeviceDpi == 0)
+                {
+                    newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
+                }
+
+                float factor = (float)newDeviceDpi / OriginalDeviceDpiInternal;
+                if (ColumnHeadersDefaultCellStyle?.Font is Font columnFont)
+                {
+                    ColumnHeadersDefaultCellStyle.Font = columnFont.WithSize(columnFont.Size * factor);
+                }
+
+                if (RowHeadersDefaultCellStyle?.Font is Font rowFont)
+                {
+                    RowHeadersDefaultCellStyle.Font = rowFont.WithSize(rowFont.Size * factor);
+                }
+
+                break;
         }
 
         base.WndProc(ref m);
