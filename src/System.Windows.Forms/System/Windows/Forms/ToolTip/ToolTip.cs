@@ -71,6 +71,11 @@ public partial class ToolTip : Component, IExtenderProvider, IHandle<HWND>
     private bool _cancelled;
 
     /// <summary>
+    /// To store the keyboard tooltip value.
+    /// </summary>
+    private static readonly int s_keyboardTooltipProperty = PropertyStore.CreateKey();
+
+    /// <summary>
     ///  Initializes a new instance of the <see cref="ToolTip"/> class, given the container.
     /// </summary>
     public ToolTip(IContainer cont)
@@ -1206,9 +1211,10 @@ public partial class ToolTip : Component, IExtenderProvider, IHandle<HWND>
     /// <summary>
     ///  Associates <see cref="ToolTip"/> text with the specified control.
     /// </summary>
-    public void SetToolTip(Control control, string? caption)
+    public void SetToolTip(Control control, string? caption, bool isKeyboardTooltip = true)
     {
         TipInfo info = new(caption, TipInfo.Type.Auto);
+        control.Properties.AddValue(s_keyboardTooltipProperty, isKeyboardTooltip);
         SetToolTipInternal(control, info);
     }
 
@@ -1477,6 +1483,12 @@ public partial class ToolTip : Component, IExtenderProvider, IHandle<HWND>
 
     internal void ShowKeyboardToolTip(string? text, IKeyboardToolTip tool, int duration)
     {
+        Control? control = tool as Control;
+        if (control is not null && control.Properties.TryGetValue(s_keyboardTooltipProperty, out bool isKeyboardTooltip) && !isKeyboardTooltip)
+        {
+            return;
+        }
+
         ArgumentNullException.ThrowIfNull(tool);
         ArgumentOutOfRangeException.ThrowIfNegative(duration);
 
