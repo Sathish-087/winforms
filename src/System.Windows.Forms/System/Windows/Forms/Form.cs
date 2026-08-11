@@ -6185,7 +6185,7 @@ public partial class Form : ContainerControl
         {
             return;
         }
-
+    
         if (_ctlClient is null || !_ctlClient.IsHandleCreated)
         {
             PInvoke.SetMenu(this, HMENU.Null);
@@ -6195,28 +6195,31 @@ public partial class Form : ContainerControl
             Debug.Assert(IsMdiContainer, "Not an MDI container!");
             // when both MainMenuStrip and Menu are set, we honor the win32 menu over
             // the MainMenuStrip as the place to store the system menu controls for the maximized MDI child.
-
+    
             MenuStrip? mainMenuStrip = MainMenuStrip;
             if (mainMenuStrip is null)
             {
-                // We are dealing with a Win32 Menu; MenuStrip doesn't have control buttons.
-
-                // We need to set the "dummy" menu even when a menu is being removed
-                // (set to null) so that duplicate control buttons are not placed on the menu bar when
-                // an ole menu is being removed.
-                // Make MDI forget the mdi item position.
-                if (!Properties.TryGetValue(s_propDummyMdiMenu, out HMENU dummyMenu) || recreateMenu)
+                // Dark mode: skip dummy Win32 MDI menu (unthemed light bar for maximized child).
+                // Classic: keep dummy menu for MDI/OLE control buttons.
+                if (!Application.IsDarkModeEnabled)
                 {
-                    dummyMenu = PInvoke.CreateMenu();
-                    if (!dummyMenu.IsNull)
+                    // We need to set the "dummy" menu even when a menu is being removed
+                    // (set to null) so that duplicate control buttons are not placed on the menu bar when
+                    // an ole menu is being removed.
+                    // Make MDI forget the mdi item position.
+                    if (!Properties.TryGetValue(s_propDummyMdiMenu, out HMENU dummyMenu) || recreateMenu)
                     {
-                        Properties.AddValue(s_propDummyMdiMenu, dummyMenu);
+                        dummyMenu = PInvoke.CreateMenu();
+                        if (!dummyMenu.IsNull)
+                        {
+                            Properties.AddValue(s_propDummyMdiMenu, dummyMenu);
+                        }
                     }
+    
+                    PInvokeCore.SendMessage(_ctlClient, PInvokeCore.WM_MDISETMENU, (WPARAM)dummyMenu.Value);
                 }
-
-                PInvokeCore.SendMessage(_ctlClient, PInvokeCore.WM_MDISETMENU, (WPARAM)dummyMenu.Value);
             }
-
+    
             // (New fix: Only destroy Win32 Menu if using a MenuStrip)
             if (mainMenuStrip is not null)
             {
@@ -6226,7 +6229,7 @@ public partial class Form : ContainerControl
                 {
                     // Remove the current menu.
                     PInvoke.SetMenu(this, HMENU.Null);
-
+    
                     // because we have messed with the child's system menu by shoving in our own dummy menu,
                     // once we clear the main menu we're in trouble - this eats the close, minimize, maximize gadgets
                     // of the child form. (See WM_MDISETMENU in MSDN)
@@ -6235,14 +6238,14 @@ public partial class Form : ContainerControl
                     {
                         activeMdiChild.RecreateHandle();
                     }
-
+    
                     // Since we're removing a menu but we possibly had a menu previously,
                     // we need to clear the cached size so that new size calculations will be performed correctly.
                     CommonProperties.xClearPreferredSizeCache(this);
                 }
             }
         }
-
+    
         PInvoke.DrawMenuBar(this);
         _formStateEx[s_formStateExUpdateMenuHandlesDeferred] = 0;
     }
