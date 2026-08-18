@@ -791,6 +791,7 @@ internal partial class DefaultLayout : LayoutEngine
 
         if (IsAnchored(anchor, AnchorStyles.Bottom))
         {
+            int proposedBottom = anchorInfo.Bottom - parentHeight;
             if (ScaleHelper.IsScalingRequirementMet && (anchorInfo.Bottom - parentHeight > 0) && (oldAnchorInfo.Bottom < 0))
             {
                 // The parent was resized to fit its parent or the screen, we need to reuse the old anchors info
@@ -800,6 +801,16 @@ internal partial class DefaultLayout : LayoutEngine
                 if (!IsAnchored(anchor, AnchorStyles.Top))
                 {
                     // The control might have been resized, update the Top anchor.
+                    anchorInfo.Top = oldAnchorInfo.Bottom - cachedBounds.Height;
+                }
+            }
+            else if (ScaleHelper.IsScalingRequirementMet && oldAnchorInfo.Bottom < 0 && proposedBottom < oldAnchorInfo.Bottom && elementBounds.Height <= cachedBounds.Height)
+            {
+                // To check if the control is anchored to the bottom and the proposed bottom is less than the old anchor info bottom,
+                // then need to reuse the old anchor info to prevent losing control beyond the bottom edge.
+                anchorInfo.Bottom = oldAnchorInfo.Bottom;
+                if (!IsAnchored(anchor, AnchorStyles.Top))
+                {
                     anchorInfo.Top = oldAnchorInfo.Bottom - cachedBounds.Height;
                 }
             }
