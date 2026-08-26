@@ -416,11 +416,18 @@ public partial class TrackBar : Control, ISupportInitialize
     /// <summary>
     ///  Little private routine that helps with auto-sizing.
     /// </summary>
-    private static int PreferredDimension
+    /// <remarks>
+    ///  <para>
+    ///   This is DPI-aware so that when the control moves to a monitor with a different DPI
+    ///   (Per-Monitor V2), its auto-sized dimension is recalculated for the new DPI instead of
+    ///   staying fixed at the value computed for the previous DPI.
+    ///  </para>
+    /// </remarks>
+    private int PreferredDimension
     {
         get
         {
-            int cyhscroll = PInvokeCore.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CYHSCROLL);
+            int cyhscroll = SystemInformation.GetHorizontalScrollBarHeightForDpi(DeviceDpi);
             return ((cyhscroll * 8) / 3);
         }
     }
@@ -997,6 +1004,17 @@ public partial class TrackBar : Control, ISupportInitialize
     {
         base.OnSystemColorsChanged(e);
         RedrawControl();
+    }
+
+    /// <summary>
+    ///  Recalculates the auto-sized dimension of the <see cref="TrackBar"/> for the new DPI so that the
+    ///  control's thickness (and thus the native control's internally-drawn channel, thumb, and focus
+    ///  rectangle) stays proportional after the control moves to a monitor with a different DPI.
+    /// </summary>
+    protected override void RescaleConstantsForDpi(int deviceDpiOld, int deviceDpiNew)
+    {
+        base.RescaleConstantsForDpi(deviceDpiOld, deviceDpiNew);
+        AdjustSize();
     }
 
     /// <summary>
