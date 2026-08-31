@@ -15,5 +15,6 @@ public partial class TabControl
         UISelection = 0x00000020,
         SelectFirstControl = 0x00000040,
         InsertingItem = 0x00000080,
+        DpiChangeResizePending = 0x00000100,
     }
 }

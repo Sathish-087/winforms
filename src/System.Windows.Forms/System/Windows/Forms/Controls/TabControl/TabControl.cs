@@ -1426,6 +1426,33 @@ public partial class TabControl : Control
         base.OnResize(e);
         _cachedDisplayRect = Rectangle.Empty;
         UpdateTabSelection(false);
+
+        if (GetState(State.DpiChangeResizePending))
+        {
+            SetState(State.DpiChangeResizePending, false);
+
+            // UpdateTabSelection only updates the Bounds of the currently selected TabPage.
+            // Non-selected pages have Visible = false and therefore do not participate in layout
+            // (see Control.IArrangedElement.ParticipatesInLayout), so their Bounds - and their
+            // children's layout - would otherwise remain stale, computed for the previous DPI,
+            // until they become selected. Since this resize was caused by a DPI change (e.g. moving
+            // an MDI child or top-level Form to a monitor with a different DPI), keep every page's
+            // Bounds in sync with the current DisplayRectangle so hidden pages stay correctly laid
+            // out. This mirrors the same ResizePages() call already made once in OnHandleCreated,
+            // and is a no-op for any page whose Bounds already match.
+            ResizePages();
+        }
+    }
+
+    protected override void RescaleConstantsForDpi(int deviceDpiOld, int deviceDpiNew)
+    {
+        base.RescaleConstantsForDpi(deviceDpiOld, deviceDpiNew);
+
+        // The resize caused by this DPI change happens later (asynchronously relative to this call),
+        // once the ancestor Form finishes cascading its own DPI change and resizes this docked
+        // TabControl. Record that the next OnResize is DPI-driven so it can resync all TabPages'
+        // Bounds, not just the selected one.
+        SetState(State.DpiChangeResizePending, true);
     }
 
     [EditorBrowsable(EditorBrowsableState.Advanced)]
