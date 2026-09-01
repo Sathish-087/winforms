@@ -47,6 +47,7 @@ public partial class ListBox : ListControl
     private int _columnWidth;
     private static int s_defaultListBoxItemHeight = -1;
     private int _requestedHeight;
+    private int _integralHeightItemCountBeforeDpiScaling;
     private int _topIndex;
     private int _horizontalExtent;
     private int _maxWidth = -1;
@@ -1823,6 +1824,12 @@ public partial class ListBox : ListControl
 
     protected override void OnFontChanged(EventArgs e)
     {
+        int integralHeightItemCount = _integralHeightItemCountBeforeDpiScaling;
+        if (integralHeightItemCount == 0 && ScaledControlFont is not null)
+        {
+            integralHeightItemCount = GetIntegralHeightItemCount();
+        }
+
         base.OnFontChanged(e);
 
         // Changing the font causes us to resize, always rounding down.
@@ -1830,6 +1837,8 @@ public partial class ListBox : ListControl
 
         // Avoid the listBox and textbox behavior in Collection editors
         UpdateFontCache();
+        AdjustIntegralHeightFromItemCount(integralHeightItemCount);
+        integralHeightItemCountBeforeDpiScaling = 0;
     }
 
     /// <summary>
@@ -2068,12 +2077,56 @@ public partial class ListBox : ListControl
 
     protected override void ScaleControl(SizeF factor, BoundsSpecified specified)
     {
+        int integralHeightItemCount = 0;
+        if (factor.Height != 1F && (specified & BoundsSpecified.Height) != BoundsSpecified.None)
+        {
+            integralHeightItemCount = GetIntegralHeightItemCount();
+        }
+
+        _integralHeightItemCountBeforeDpiScaling = integralHeightItemCount;
+
         if (factor.Width != 1F && factor.Height != 1F)
         {
             UpdateFontCache();
         }
 
         base.ScaleControl(factor, specified);
+        AdjustIntegralHeightFromItemCount(integralHeightItemCount);
+    }
+
+    private int GetIntegralHeightItemCount()
+    {
+        if (!_integralHeight || _drawMode != DrawMode.Normal || !IsHandleCreated)
+        {
+            return 0;
+        }
+
+        int itemHeight = GetItemHeight(0);
+        return itemHeight > 0 ? ClientSize.Height / itemHeight : 0;
+    }
+
+    private void AdjustIntegralHeightFromItemCount(int itemCount)
+    {
+        if (itemCount <= 0 || !IsHandleCreated)
+        {
+            return;
+        }
+
+        int itemHeight = GetItemHeight(0);
+        if (itemHeight <= 0 || ClientSize.Height / itemHeight >= itemCount)
+        {
+            return;
+        }
+
+        _integralHeightAdjust = true;
+        try
+        {
+            Height = SizeFromClientSize(new Size(ClientSize.Width, itemCount * itemHeight)).Height;
+        }
+        finally
+        {
+            _integralHeightAdjust = false;
+        }
     }
 
     /// <summary>
