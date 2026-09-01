@@ -125,10 +125,17 @@ public partial class TabControl
             };
         }
 
+        internal override IRawElementProviderFragment.Interface? GetFocus()
+            => this.IsOwnerHandleCreated(out TabControl? owner) && owner.Focused
+                ? owner.SelectedTab?.TabAccessibilityObject
+                : null;
+
         internal override VARIANT GetPropertyValue(UIA_PROPERTY_ID propertyID)
             => propertyID switch
             {
-                UIA_PROPERTY_ID.UIA_HasKeyboardFocusPropertyId => (VARIANT)(this.TryGetOwnerAs(out TabControl? owner) && owner.Focused),
+                UIA_PROPERTY_ID.UIA_HasKeyboardFocusPropertyId => (VARIANT)(this.TryGetOwnerAs(out TabControl? owner)
+                    && owner.Focused
+                    && owner.SelectedTab is null),
                 UIA_PROPERTY_ID.UIA_IsKeyboardFocusablePropertyId
                     // This is necessary for compatibility with MSAA proxy:
                     // IsKeyboardFocusable = true regardless the control is enabled/disabled.
