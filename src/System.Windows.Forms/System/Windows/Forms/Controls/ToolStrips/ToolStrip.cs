@@ -3762,20 +3762,25 @@ public partial class ToolStrip : ScrollableControl, IArrangedElement, ISupportTo
     }
 
     /// <summary>
-    /// Rescales the bounds of hosted controls in ToolStripControlHost items for DPI changes.
+    /// Rescales hosted controls in ToolStripControlHost items for DPI changes.
     /// </summary>
-    private static void RescaleHostedControlBoundsForDpi(ToolStripItem item, int deviceDpiOld, int deviceDpiNew)
+    private static void RescaleHostedControlBoundsForDpi(
+        ToolStripItem item,
+        int deviceDpiOld,
+        int deviceDpiNew,
+        bool isDropDownChild = false)
     {
         if (item is ToolStripControlHost controlHost)
         {
-            controlHost.RescaleHostedControlBoundsForDpi(deviceDpiOld, deviceDpiNew);
+            // DropDown child items are already font-scaled in ToolStripDropDownItem.ToolStrip_RescaleConstants.
+            controlHost.RescaleHostedControlBoundsForDpi(deviceDpiOld, deviceDpiNew, rescaleFont: !isDropDownChild);
         }
 
         if (item is ToolStripDropDownItem dropDownItem && dropDownItem.HasDropDownItems)
         {
             foreach (ToolStripItem dropDownChildItem in dropDownItem.DropDownItems)
             {
-                RescaleHostedControlBoundsForDpi(dropDownChildItem, deviceDpiOld, deviceDpiNew);
+                RescaleHostedControlBoundsForDpi(dropDownChildItem, deviceDpiOld, deviceDpiNew, isDropDownChild: true);
             }
         }
     }

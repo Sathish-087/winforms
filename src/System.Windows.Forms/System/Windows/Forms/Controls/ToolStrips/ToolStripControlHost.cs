@@ -468,9 +468,9 @@ public partial class ToolStripControlHost : ToolStripItem
     }
 
     /// <summary>
-    /// Rescales the hosted control's bounds and font for a DPI change.
+    /// Rescales the hosted control's bounds for a DPI change and optionally synchronizes font scaling.
     /// </summary>
-    internal void RescaleHostedControlBoundsForDpi(int deviceDpiOld, int deviceDpiNew)
+    internal void RescaleHostedControlBoundsForDpi(int deviceDpiOld, int deviceDpiNew, bool rescaleFont = true)
     {
         Control? hostedControl = Control;
         if (hostedControl is null || hostedControl.IsDisposed || deviceDpiOld == deviceDpiNew)
@@ -487,7 +487,11 @@ public partial class ToolStripControlHost : ToolStripItem
         }
 
         // Sync the hosted control font to the ToolStrip menu font (or scale a truly user-set font) for the new DPI.
-        SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
+        if (rescaleFont)
+        {
+            SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
+        }
+
         // Sync the hosted control DeviceDpi to the new DPI so that any synchronous handle recreation from OnFontChanged cannot treat MenuFont-at-new-DPI as still living at the old DPI and WithSize it again.
         if (hostedControl.DeviceDpi != deviceDpiNew)
         {
