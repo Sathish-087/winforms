@@ -9764,6 +9764,36 @@ public partial class RichTextBoxTests
         }
     }
 
+    [WinFormsFact]
+    public void RichTextBox_Rtf_SetWithLiteralUnicodeAndUnicodeEscape_PreservesCharacters()
+    {
+        using RichTextBox control = new();
+
+        const string inputRtf = @"{\rtf1\ansi\ansicpg1252\deff0 " +
+            @"Unicode escape beta: \u946?; " +
+            @"Literal beta: β; " +
+            @"Number: 1\~234\~567}";
+        control.Rtf = inputRtf;
+
+        string expectedText = $"Unicode escape beta: β; Literal beta: β; Number: 1{(char)0xA0}234{(char)0xA0}567";
+        Assert.Equal(expectedText, control.Text);
+    }
+
+    [WinFormsFact]
+    public void RichTextBox_SelectedRtf_SetWithLiteralUnicodeAndUnicodeEscape_PreservesCharacters()
+    {
+        using RichTextBox control = new();
+
+        const string selectedRtf = @"{\rtf1\ansi\ansicpg1252\deff0 " +
+            @"Unicode escape beta: \u946?; " +
+            @"Literal beta: β}";
+
+        control.SelectedRtf = selectedRtf;
+
+        const string expectedText = "Unicode escape beta: β; Literal beta: β";
+        Assert.Equal(expectedText, control.Text);
+    }
+
     public static IEnumerable<object[]> WndProc_GetDlgCode_TestData()
     {
         yield return new object[] { true, (IntPtr)2 };
