@@ -4452,6 +4452,74 @@ public class WebBrowserTests
         control.Stop();
     }
 
+    public static IEnumerable<object[]> WndProc_MouseActivationMessage_TestData()
+    {
+        yield return new object[] { (int)PInvokeCore.WM_LBUTTONDOWN };
+        yield return new object[] { (int)PInvokeCore.WM_MBUTTONDOWN };
+        yield return new object[] { (int)PInvokeCore.WM_RBUTTONDOWN };
+        yield return new object[] { (int)PInvokeCore.WM_MOUSEACTIVATE };
+    }
+
+    [WinFormsTheory]
+    [MemberData(nameof(WndProc_MouseActivationMessage_TestData))]
+    public void WebBrowser_WndProc_InvokeMouseActivationMessageWithContainingControlAndContainsFocus_DoesNotRefocus(int msg)
+    {
+        using Form form = new();
+        using SplitContainer splitContainer = new();
+        using FocusTrackingWebBrowser control = new();
+        using Button button = new();
+
+        splitContainer.Panel1.Controls.Add(control);
+        splitContainer.Panel2.Controls.Add(button);
+        form.Controls.Add(splitContainer);
+        form.Show();
+
+        Assert.Same(form, control.GetContainingControl());
+        Assert.True(control.Focus());
+        Assert.True(control.ContainsFocus);
+        Assert.NotSame(control, form.ActiveControl);
+
+        control.ResetFocusInternalCallCount();
+
+        Message message = new()
+        {
+            Msg = msg
+        };
+
+        control.WndProc(ref message);
+        Assert.Equal(0, control.FocusInternalCallCount);
+    }
+
+    [WinFormsTheory]
+    [MemberData(nameof(WndProc_MouseActivationMessage_TestData))]
+    public void WebBrowser_WndProc_InvokeMouseActivationMessageWithContainingControlWithoutFocus_Refocuses(int msg)
+    {
+        using Form form = new();
+        using SplitContainer splitContainer = new();
+        using FocusTrackingWebBrowser control = new();
+        using Button button = new();
+
+        splitContainer.Panel1.Controls.Add(control);
+        splitContainer.Panel2.Controls.Add(button);
+        form.Controls.Add(splitContainer);
+        form.Show();
+
+        Assert.Same(form, control.GetContainingControl());
+        Assert.True(button.Focus());
+        Assert.False(control.ContainsFocus);
+        Assert.NotSame(control, form.ActiveControl);
+
+        control.ResetFocusInternalCallCount();
+
+        Message message = new()
+        {
+            Msg = msg
+        };
+
+        control.WndProc(ref message);
+        Assert.Equal(1, control.FocusInternalCallCount);
+    }
+
     [WinFormsFact]
     public void WebBrowser_WndProc_InvokeMouseHoverWithHandle_Success()
     {
@@ -4752,6 +4820,21 @@ public class WebBrowserTests
         public new void OnStatusTextChanged(EventArgs e) => base.OnStatusTextChanged(e);
 
         public new void WndProc(ref Message m) => base.WndProc(ref m);
+    }
+
+    private class FocusTrackingWebBrowser : SubWebBrowser
+    {
+        public int FocusInternalCallCount { get; private set; }
+
+        private protected override bool FocusInternal()
+        {
+            FocusInternalCallCount++;
+            return base.FocusInternal();
+        }
+
+        public ContainerControl GetContainingControl() => ContainingControl;
+
+        public void ResetFocusInternalCallCount() => FocusInternalCallCount = 0;
     }
 
     [WinFormsFact]

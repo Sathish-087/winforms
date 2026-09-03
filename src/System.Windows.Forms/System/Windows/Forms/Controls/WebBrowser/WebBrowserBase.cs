@@ -403,7 +403,7 @@ public unsafe partial class WebBrowserBase : Control
             case PInvokeCore.WM_MOUSEACTIVATE:
                 if (!DesignMode)
                 {
-                    if (_containingControl is not null && _containingControl.ActiveControl != this)
+                    if (_containingControl is not null && _containingControl.ActiveControl != this && !ContainsFocus)
                     {
                         Focus();
                     }
