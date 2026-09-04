@@ -721,9 +721,10 @@ public abstract partial class UpDownBase : ContainerControl
     /// </summary>
     protected virtual void OnTextBoxResize(object? source, EventArgs e)
     {
-        if (!UseSideBySideButtons || AutoSize)
+        int preferredHeight = PreferredHeight;
+        if ((!UseSideBySideButtons || AutoSize) && Height != preferredHeight)
         {
-            Height = PreferredHeight;
+            Height = preferredHeight;
         }
 
         PositionControls();

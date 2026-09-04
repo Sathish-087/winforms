@@ -3351,6 +3351,95 @@ public class UpDownBaseTests
         drawToBitmap.Should().NotThrow();
     }
 
+    [WinFormsFact]
+    public void UpDownBase_OnTextBoxResize_HeightAlreadyPreferred_DoesNotRequeueRequiredScaling()
+    {
+        using SubUpDownBase control = new();
+
+        // Clear any prior scaling flags from construction/setup.
+        control.RequiredScaling = BoundsSpecified.None;
+        Assert.Equal(control.PreferredHeight, control.Height);
+
+        control.OnTextBoxResize(source: null, EventArgs.Empty);
+
+        // Regression check: old behavior re-queued Height scaling even for no-op size sets.
+        Assert.Equal(BoundsSpecified.None, control.RequiredScaling);
+    }
+
+    [WinFormsFact]
+    public void UpDownBase_OnTextBoxResize_HeightDiffers_StillAppliesPreferredHeight()
+    {
+        using SubUpDownBase control = new();
+
+        int preferredHeight = control.PreferredHeight;
+        control.Height = preferredHeight + 7;
+
+        control.OnTextBoxResize(source: null, EventArgs.Empty);
+
+        Assert.Equal(preferredHeight, control.Height);
+    }
+
+    [WinFormsFact]
+    public void UpDownBase_AutoScaleFont_NumericUpDownMargins_ScaledOnceAcrossHierarchy()
+    {
+        const float scaleX = 10f / 7f;   // 150% equivalent horizontal autoscale factor
+        const float scaleY = 23f / 15f;  // 150% equivalent vertical autoscale factor
+
+        using Form form = new()
+        {
+            AutoScaleMode = AutoScaleMode.Font
+        };
+
+        using NumericUpDown standalone = new() { Margin = new Padding(3) };
+        using TableLayoutPanel singleTable = new() { AutoSize = true, ColumnCount = 1, RowCount = 1 };
+        using NumericUpDown singleTableNud = new() { Margin = new Padding(3) };
+
+        using TableLayoutPanel outerTable = new() { AutoSize = true, ColumnCount = 1, RowCount = 1 };
+        using GroupBox groupBox = new() { AutoSize = true };
+        using TableLayoutPanel innerTable = new() { AutoSize = true, ColumnCount = 1, RowCount = 1 };
+        using NumericUpDown nestedNud = new() { Margin = new Padding(3) };
+
+        form.SuspendLayout();
+        singleTable.SuspendLayout();
+        outerTable.SuspendLayout();
+        groupBox.SuspendLayout();
+        innerTable.SuspendLayout();
+
+        singleTable.Controls.Add(singleTableNud, 0, 0);
+        innerTable.Controls.Add(nestedNud, 0, 0);
+        groupBox.Controls.Add(innerTable);
+        outerTable.Controls.Add(groupBox, 0, 0);
+
+        form.Controls.Add(standalone);
+        form.Controls.Add(singleTable);
+        form.Controls.Add(outerTable);
+
+        SizeF current = form.CurrentAutoScaleDimensions;
+        form.AutoScaleDimensions = new SizeF(current.Width / scaleX, current.Height / scaleY);
+
+        innerTable.ResumeLayout(performLayout: false);
+        innerTable.PerformLayout();
+        groupBox.ResumeLayout(performLayout: false);
+        groupBox.PerformLayout();
+        outerTable.ResumeLayout(performLayout: false);
+        outerTable.PerformLayout();
+        singleTable.ResumeLayout(performLayout: false);
+        singleTable.PerformLayout();
+        form.ResumeLayout(performLayout: false);
+
+        form.PerformAutoScale();
+        form.PerformLayout();
+
+        Padding expectedOnce = new(4, 5, 4, 5);
+
+        Assert.Equal(expectedOnce, standalone.Margin);
+        Assert.Equal(expectedOnce, singleTableNud.Margin);
+        Assert.Equal(expectedOnce, nestedNud.Margin);
+
+        // Main regression assertion: nested control must not be scaled multiple times.
+        Assert.Equal(standalone.Margin, nestedNud.Margin);
+    }
+
     private class CustomValidateUpDownBase : UpDownBase
     {
         public new bool ChangingText
