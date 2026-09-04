@@ -2360,8 +2360,8 @@ public class ComboBoxTests
     public void ComboBox_SelectedValueBindingAddedFirstOnHiddenTab_DoesNotBreakSiblingBindings()
     {
         using Form form = new();
-        using ComboBox comboBox = new();
-        using TabControl tabControl = new();
+        using ComboBox comboBox = new() { Dock = DockStyle.Top };
+        using TabControl tabControl = new() { Dock = DockStyle.Fill };
         using TabPage tabPage1 = new();
         using TabPage tabPage2 = new();
         using GroupBox groupBox = new();
@@ -2386,25 +2386,34 @@ public class ComboBoxTests
         comboBox.DataSource = dataSource;
         comboBox.DisplayMember = nameof(KeyValuePair<int, string>.Value);
         comboBox.ValueMember = nameof(KeyValuePair<int, string>.Key);
-        comboBox.DataBindings.Add(nameof(comboBox.SelectedValue), model, nameof(Issue9272DataModel.CbbContent), true, DataSourceUpdateMode.OnPropertyChanged);
+        _ = comboBox.DataBindings.Add(
+            nameof(comboBox.SelectedValue),
+            model,
+            nameof(Issue9272DataModel.CbbContent),
+            true,
+            DataSourceUpdateMode.OnPropertyChanged);
         model.OnPropertyChanged(nameof(Issue9272DataModel.CbbContent));
 
-        checkBox.DataBindings.Add(nameof(checkBox.Checked), model, nameof(Issue9272DataModel.IsChecked), true, DataSourceUpdateMode.OnPropertyChanged);
-        label.DataBindings.Add(nameof(label.Visible), model, nameof(Issue9272DataModel.DisableText));
+        _ = checkBox.DataBindings.Add(
+            nameof(checkBox.Checked),
+            model,
+            nameof(Issue9272DataModel.IsChecked),
+            true,
+            DataSourceUpdateMode.OnPropertyChanged);
 
-        form.CreateControl();
-        comboBox.CreateControl();
+        Binding visibleBinding = label.DataBindings.Add(nameof(label.Visible), model, nameof(Issue9272DataModel.DisableText));
+
+        form.Show();
+        Application.DoEvents();
+
+        Assert.False(label.Created);
+        Assert.Null(visibleBinding.BindingManagerBase);
+
         tabControl.SelectedTab = tabPage2;
-        groupBox.CreateControl();
+        Application.DoEvents();
         label.CreateControl();
-        checkBox.CreateControl();
-
-        Assert.True(label.DataBindings[nameof(label.Visible)].IsBinding);
-        Assert.True(label.Visible);
-
-        checkBox.Checked = true;
-        Assert.True(model.IsChecked);
-        Assert.False(label.Visible);
+        Assert.True(label.Created);
+        Assert.NotNull(visibleBinding.BindingManagerBase);
     }
 
     public class CustomComboBox : ComboBox
