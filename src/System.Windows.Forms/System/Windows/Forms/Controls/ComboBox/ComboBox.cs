@@ -2769,6 +2769,31 @@ public partial class ComboBox : ListControl
         ((EventHandler?)Events[s_dropDownStyleEvent])?.Invoke(this, e);
     }
 
+    /// <inheritdoc/>
+    protected override void OnParentChanged(EventArgs e)
+    {
+        base.OnParentChanged(e);
+
+        if (!ScaleHelper.IsThreadPerMonitorV2Aware
+            || !IsHandleCreated
+            || ParentInternal is null
+            || !ParentInternal.IsHandleCreated)
+        {
+            return;
+        }
+
+        // During remove/add reparenting the HWND can still be parked here.
+        // Recreate only when the native parent does not yet match the managed parent.
+        if (PInvoke.GetParent(this) == ParentInternal.HWNDInternal)
+        {
+            return;
+        }
+
+        ResetHeightCache();
+        CommonProperties.xClearPreferredSizeCache(this);
+        RecreateHandle();
+    }
+
     /// <summary>
     ///  This method is called by the parent control when any property
     ///  changes on the parent. This can be overridden by inheriting

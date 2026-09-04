@@ -1451,6 +1451,52 @@ public class ComboBoxTests
     }
 
     [WinFormsFact]
+    public void ComboBox_ReparentHandleCreatedControl_InPerMonitorV2_RecreatesHandle()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(
+            DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if (!ScaleHelper.IsThreadPerMonitorV2Aware)
+        {
+            return;
+        }
+
+        using Form sourceForm = new();
+        using Form targetForm = new();
+        using Panel sourcePanel = new();
+        using Panel targetPanel = new();
+        using ComboBox comboBox = new()
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        comboBox.Items.AddRange(["one", "two"]);
+
+        sourceForm.Controls.Add(sourcePanel);
+        targetForm.Controls.Add(targetPanel);
+        sourceForm.CreateControl();
+        targetForm.CreateControl();
+        sourcePanel.CreateControl();
+        targetPanel.CreateControl();
+
+        sourcePanel.Controls.Add(comboBox);
+        comboBox.CreateControl();
+
+        nint originalHandle = comboBox.Handle;
+        int handleCreatedCallCount = 0;
+        int handleDestroyedCallCount = 0;
+        comboBox.HandleCreated += (_, _) => handleCreatedCallCount++;
+        comboBox.HandleDestroyed += (_, _) => handleDestroyedCallCount++;
+
+        sourcePanel.Controls.Clear();
+        targetPanel.Controls.Add(comboBox);
+
+        Assert.Same(targetPanel, comboBox.Parent);
+        Assert.True(comboBox.IsHandleCreated);
+        Assert.NotEqual(originalHandle, comboBox.Handle);
+        Assert.Equal(1, handleDestroyedCallCount);
+        Assert.Equal(1, handleCreatedCallCount);
+    }
+
+    [WinFormsFact]
     public void ComboBox_ModernSimple_EditFillsAvailableFieldWidth()
     {
         using SystemVisualSettingsTestScope settingsScope = new(
