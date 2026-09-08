@@ -844,7 +844,8 @@ public partial class CheckedListBox : ListBox
         base.RefreshItems();
 
         // restore the checkedItems...
-        for (int j = 0; j < Items.Count; j++)
+        int count = Math.Min(savedCheckedItems.Length, Items.Count);
+        for (int j = 0; j < count; j++)
         {
             CheckedItems.SetCheckedState(j, savedCheckedItems[j]);
         }
@@ -939,6 +940,16 @@ public partial class CheckedListBox : ListBox
                 break;
             case MessageId.WM_REFLECT_VKEYTOITEM:
                 WmReflectVKeyToItem(ref m);
+                break;
+            case PInvokeCore.WM_DPICHANGED_AFTERPARENT:
+                base.WndProc(ref m);
+                int topIndex = TopIndex;
+                RefreshItems();
+                if (Items.Count > 0)
+                {
+                    TopIndex = Math.Min(topIndex, Items.Count - 1);
+                }
+
                 break;
             default:
                 if (m.MsgInternal == LBC_GETCHECKSTATE)
