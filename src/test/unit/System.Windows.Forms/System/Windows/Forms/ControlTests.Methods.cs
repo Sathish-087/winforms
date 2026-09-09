@@ -6751,6 +6751,87 @@ public partial class ControlTests
     }
 
     [WinFormsFact]
+    public void Control_RecreateHandle_InvokeHiddenWithHandle_PreservesCreatedState()
+    {
+        using Form form = new();
+        using SubControl control = new()
+        {
+            Parent = form
+        };
+
+        form.Show();
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        Assert.True(control.IsHandleCreated);
+        Assert.True(control.Created);
+
+        control.Visible = false;
+        Assert.False(control.Visible);
+        Assert.True(control.IsHandleCreated);
+        Assert.True(control.Created);
+
+        control.RecreateHandle();
+        Assert.False(control.Visible);
+        Assert.True(control.IsHandleCreated);
+        Assert.True(control.Created);
+    }
+
+    [WinFormsFact]
+    public void Control_RecreateHandle_InvokeHiddenWithVisibleBinding_BindingRemainsActive()
+    {
+        using Form form = new();
+        using SubControl control = new()
+        {
+            Parent = form
+        };
+
+        form.Show();
+        VisibleBindingDataSource dataSource = new() { Visible = true };
+        Binding binding = control.DataBindings.Add(nameof(Control.Visible), dataSource, nameof(VisibleBindingDataSource.Visible));
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        Assert.True(control.Visible);
+        Assert.True(control.IsHandleCreated);
+        Assert.True(control.Created);
+        Assert.True(binding.IsBinding);
+
+        dataSource.Visible = false;
+        Assert.False(control.Visible);
+        Assert.True(binding.IsBinding);
+
+        control.RecreateHandle();
+        Assert.False(control.Visible);
+        Assert.True(control.IsHandleCreated);
+        Assert.True(control.Created);
+        Assert.True(binding.IsBinding);
+
+        dataSource.Visible = true;
+        Assert.True(control.Visible);
+        Assert.True(binding.IsBinding);
+    }
+
+    private sealed class VisibleBindingDataSource : INotifyPropertyChanged
+    {
+        private bool _visible;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        public bool Visible
+        {
+            get => _visible;
+            set
+            {
+                if (_visible == value)
+                {
+                    return;
+                }
+
+                _visible = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Visible)));
+            }
+        }
+    }
+
+    [WinFormsFact]
     public void Control_Refresh_InvokeWithoutHandle_Nop()
     {
         using Control control = new();

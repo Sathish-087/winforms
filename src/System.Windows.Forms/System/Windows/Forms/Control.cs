@@ -10056,7 +10056,14 @@ public unsafe partial class Control :
 
             if (created)
             {
-                CreateControl();
+                if (Visible)
+                {
+                    CreateControl();
+                }
+                else if (IsHandleCreated)
+                {
+                    SetState(States.Created, true);
+                }
             }
 
             if (
