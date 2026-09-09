@@ -328,6 +328,26 @@ public partial class RichTextBox : TextBoxBase
     /// </summary>
     private protected override bool ReservesNativeNonClientArea => true;
 
+    private protected override Color VisualStylesBackColor
+    {
+        get
+        {
+            if (EffectiveVisualStylesMode < VisualStylesMode.Net11 || Enabled)
+            {
+                return BackColor;
+            }
+
+            if (ShouldSerializeBackColor())
+            {
+                return BackColor;
+            }
+
+            return Application.IsDarkModeEnabled
+                ? SystemColors.ControlDark
+                : SystemColors.Control;
+        }
+    }
+
     /// <summary>
     ///  RichEdit reserves the scrollbar space itself while processing <c>WM_NCCALCSIZE</c> (see
     ///  <see cref="ReservesNativeNonClientArea"/>). Return the configured reservation for preferred-size
@@ -2433,10 +2453,7 @@ public partial class RichTextBox : TextBoxBase
 
     protected override void OnBackColorChanged(EventArgs e)
     {
-        if (IsHandleCreated)
-        {
-            PInvokeCore.SendMessage(this, PInvokeCore.EM_SETBKGNDCOLOR, 0, BackColor.ToWin32());
-        }
+        UpdateBackgroundColor();
 
         base.OnBackColorChanged(e);
     }
@@ -2541,7 +2558,7 @@ public partial class RichTextBox : TextBoxBase
         bool autoWordSelection = AutoWordSelection;
         AutoWordSelection = autoWordSelection;
 
-        PInvokeCore.SendMessage(this, PInvokeCore.EM_SETBKGNDCOLOR, (WPARAM)0, (LPARAM)BackColor);
+        UpdateBackgroundColor();
         InternalSetForeColor(ForeColor);
 
         // base sets the Text property. It's important to do this *after* setting EM_AUTOUrlDETECT.
@@ -3198,6 +3215,16 @@ public partial class RichTextBox : TextBoxBase
         PInvokeCore.DragAcceptFiles(this, fAccept: false);
     }
 
+    private void UpdateBackgroundColor()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        PInvokeCore.SendMessage(this, PInvokeCore.EM_SETBKGNDCOLOR, 0, VisualStylesBackColor.ToWin32());
+    }
+
     // Note: RichTextBox doesn't work like other controls as far as setting ForeColor/
     // BackColor -- you need to send messages to update the colors
     private void UserPreferenceChangedHandler(object o, UserPreferenceChangedEventArgs e)
@@ -3206,7 +3233,7 @@ public partial class RichTextBox : TextBoxBase
         {
             if (BackColor.IsSystemColor)
             {
-                PInvokeCore.SendMessage(this, PInvokeCore.EM_SETBKGNDCOLOR, 0, BackColor.ToWin32());
+                UpdateBackgroundColor();
             }
 
             if (ForeColor.IsSystemColor)
@@ -3535,9 +3562,11 @@ public partial class RichTextBox : TextBoxBase
                 // renderer first in the case of the RTF control.
                 base.WndProc(ref m);
 
+                bool shouldPaintDisabledModernBackColor = EffectiveVisualStylesMode >= VisualStylesMode.Net11;
+
                 if (Handle == m.HWND
                     && !Enabled
-                    && Application.IsDarkModeEnabled)
+                    && (shouldPaintDisabledModernBackColor || Application.IsDarkModeEnabled))
                 {
                     // If the control is disabled, we don't want to let the RTF control
                     // paint anything else. We will paint the background and the unformatted
@@ -3546,7 +3575,11 @@ public partial class RichTextBox : TextBoxBase
                     using Graphics g = Graphics.FromHwndInternal(Handle);
 
                     // Paint the background
-                    g.FillRectangle(SystemBrushes.ControlDark, ClientRectangle);
+                    Color backgroundColor = shouldPaintDisabledModernBackColor
+                        ? VisualStylesBackColor
+                        : SystemColors.ControlDark;
+                    using var backgroundBrush = backgroundColor.GetCachedSolidBrushScope();
+                    g.FillRectangle(backgroundBrush, ClientRectangle);
 
                     // Use EM_GETRECT to get the text formatting rectangle, which accounts
                     // for internal borders and padding, rather than using ClientRectangle.
@@ -3613,6 +3646,15 @@ public partial class RichTextBox : TextBoxBase
             case PInvokeCore.WM_GETDLGCODE:
                 base.WndProc(ref m);
                 m.ResultInternal = (LRESULT)(AcceptsTab ? m.ResultInternal | (nint)PInvoke.DLGC_WANTTAB : m.ResultInternal & ~(nint)PInvoke.DLGC_WANTTAB);
+                break;
+
+            case PInvokeCore.WM_ENABLE:
+                base.WndProc(ref m);
+                if (EffectiveVisualStylesMode >= VisualStylesMode.Net11)
+                {
+                    UpdateBackgroundColor();
+                }
+
                 break;
 
             case PInvokeCore.WM_GETOBJECT:
