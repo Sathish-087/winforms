@@ -391,6 +391,218 @@ public class ButtonTests : ControlTestBase
         });
     }
 
+    [WinFormsTheory]
+    [InlineData(DialogResult.Abort)]
+    [InlineData(DialogResult.Cancel)]
+    [InlineData(DialogResult.Ignore)]
+    [InlineData(DialogResult.No)]
+    [InlineData(DialogResult.OK)]
+    [InlineData(DialogResult.Retry)]
+    [InlineData(DialogResult.Yes)]
+    [InlineData(DialogResult.None)]
+    public async Task Button_DialogResult_PerformClick_SetsFormDialogResultAsync(DialogResult dialogResult)
+    {
+        await RunTestAsync((form, button) =>
+        {
+            bool wasClicked = false;
+
+            button.DialogResult = dialogResult;
+            button.Click += (sender, e) => wasClicked = true;
+
+            Assert.Equal(DialogResult.None, form.DialogResult);
+
+            button.PerformClick();
+
+            Assert.True(wasClicked);
+            Assert.Equal(dialogResult, form.DialogResult);
+
+            // A non-None DialogResult makes the modal ShowDialog loop ready to close.
+            // Reset it so teardown can close the form; otherwise later mouse-driven tests can miss.
+            if (dialogResult != DialogResult.None)
+            {
+                form.DialogResult = DialogResult.None;
+            }
+
+            Assert.True(form.Visible);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_AcceptButton_SetsDefaultAndPerformClickSetsDialogResultAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            button.Text = "OK";
+            button.DialogResult = DialogResult.OK;
+            form.AcceptButton = button;
+
+            Assert.Same(button, form.AcceptButton);
+            Assert.True(button.IsDefault);
+
+            bool wasClicked = false;
+            button.Click += (sender, e) => wasClicked = true;
+
+            button.PerformClick();
+
+            Assert.True(wasClicked);
+            Assert.Equal(DialogResult.OK, form.DialogResult);
+
+            // Keep the modal loop alive so later mouse-driven tests still hit their target.
+            form.DialogResult = DialogResult.None;
+            Assert.True(form.Visible);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_NotifyDefault_TogglesIsDefaultAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            // When the form is shown, a focused IButtonControl becomes the default button.
+            // Establish a known starting state before verifying NotifyDefault.
+            button.NotifyDefault(false);
+            Assert.False(button.IsDefault);
+
+            button.NotifyDefault(true);
+            Assert.True(button.IsDefault);
+
+            button.NotifyDefault(false);
+            Assert.False(button.IsDefault);
+
+            // Idempotent call should not throw or change state.
+            button.NotifyDefault(false);
+            Assert.False(button.IsDefault);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_PerformClick_WhenDisabled_DoesNotFireClickAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            bool wasClicked = false;
+            button.DialogResult = DialogResult.OK;
+            button.Click += (sender, e) => wasClicked = true;
+            button.Enabled = false;
+
+            button.PerformClick();
+
+            Assert.False(wasClicked);
+            Assert.Equal(DialogResult.None, form.DialogResult);
+            Assert.True(form.Visible);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_PerformClick_WhenNotVisible_DoesNotFireClickAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            bool wasClicked = false;
+            button.DialogResult = DialogResult.OK;
+            button.Click += (sender, e) => wasClicked = true;
+
+            // Invisible controls are not selectable, so PerformClick is a no-op.
+            button.Visible = false;
+            Assert.False(button.CanSelect);
+
+            button.PerformClick();
+
+            Assert.False(wasClicked);
+            Assert.Equal(DialogResult.None, form.DialogResult);
+            Assert.True(form.Visible);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_AutoSize_GrowsWhenTextBecomesLongerAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            button.AutoSize = true;
+            button.AutoSizeMode = AutoSizeMode.GrowOnly;
+            button.Text = "A";
+            form.PerformLayout();
+
+            Size shortTextSize = button.Size;
+
+            button.Text = "A much longer button caption for autosize";
+            form.PerformLayout();
+
+            Assert.True(button.Width >= shortTextSize.Width);
+            Assert.True(button.PreferredSize.Width >= shortTextSize.Width);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsTheory]
+    [InlineData(FlatStyle.Standard)]
+    [InlineData(FlatStyle.Flat)]
+    [InlineData(FlatStyle.Popup)]
+    [InlineData(FlatStyle.System)]
+    public async Task Button_FlatStyle_PerformClick_FiresClickAsync(FlatStyle flatStyle)
+    {
+        await RunTestAsync((form, button) =>
+        {
+            bool wasClicked = false;
+            button.FlatStyle = flatStyle;
+            button.Text = flatStyle.ToString();
+            button.Click += (sender, e) => wasClicked = true;
+
+            button.PerformClick();
+
+            Assert.True(wasClicked);
+            Assert.Equal(flatStyle, button.FlatStyle);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_ToString_IncludesTextAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            button.Text = "Coverage";
+
+            string value = button.ToString();
+
+            Assert.Contains(nameof(Button), value, StringComparison.Ordinal);
+            Assert.Contains("Coverage", value, StringComparison.Ordinal);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Button_PerformClick_RaisesClickEachTimeAsync()
+    {
+        await RunTestAsync((form, button) =>
+        {
+            int clickCount = 0;
+            button.Click += (sender, e) => clickCount++;
+
+            button.PerformClick();
+            button.PerformClick();
+            button.PerformClick();
+
+            Assert.Equal(3, clickCount);
+
+            return Task.CompletedTask;
+        });
+    }
+
     private async Task RunTestAsync(Func<Form, Button, Task> runTest)
     {
         await RunSingleControlTestAsync(

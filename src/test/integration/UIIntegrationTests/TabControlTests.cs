@@ -151,4 +151,242 @@ public class TabControlTests : ControlTestBase
 
     // Bug https://github.com/dotnet/winforms/issues/7837 occured only when TabControl was subclassed.
     private class SubclassedTabControl : TabControl { }
+
+    [WinFormsFact]
+    public async Task TabControl_Properties_RoundTripAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                tabControl.Alignment = TabAlignment.Left;
+                tabControl.Appearance = TabAppearance.Normal;
+                tabControl.SizeMode = TabSizeMode.Normal;
+                tabControl.Multiline = true;
+                tabControl.Padding = new Point(8, 4);
+                tabControl.HotTrack = true;
+                tabControl.ShowToolTips = true;
+
+                Assert.Equal(TabAlignment.Left, tabControl.Alignment);
+                Assert.Equal(TabAppearance.Normal, tabControl.Appearance);
+                Assert.Equal(TabSizeMode.Normal, tabControl.SizeMode);
+                Assert.True(tabControl.Multiline);
+                Assert.Equal(new Point(8, 4), tabControl.Padding);
+                Assert.True(tabControl.HotTrack);
+                Assert.True(tabControl.ShowToolTips);
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                TabPage tabPage1 = new();
+                TabPage tabPage2 = new();
+                tabControl.TabPages.Add(tabPage1);
+                tabControl.TabPages.Add(tabPage2);
+
+                return tabControl;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task TabControl_SelectedIndex_ChangesRaiseEventAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                int selectedIndexChangedCount = 0;
+                int selectedCount = 0;
+                TabControlEventArgs? lastSelectedArgs = null;
+
+                tabControl.SelectedIndexChanged += (sender, e) => selectedIndexChangedCount++;
+                tabControl.Selected += (sender, e) =>
+                {
+                    selectedCount++;
+                    lastSelectedArgs = e;
+                };
+
+                Assert.Equal(0, tabControl.SelectedIndex);
+                Assert.Same(tabControl.TabPages[0], tabControl.SelectedTab);
+
+                tabControl.SelectedIndex = 1;
+                Assert.Equal(1, tabControl.SelectedIndex);
+                Assert.Same(tabControl.TabPages[1], tabControl.SelectedTab);
+
+                tabControl.SelectedTab = tabControl.TabPages[0];
+                Assert.Equal(0, tabControl.SelectedIndex);
+
+                Assert.True(selectedIndexChangedCount >= 2);
+                Assert.True(selectedCount >= 2);
+                Assert.NotNull(lastSelectedArgs);
+                Assert.Same(tabControl.TabPages[0], lastSelectedArgs!.TabPage);
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                tabControl.TabPages.Add(new TabPage { Text = "First" });
+                tabControl.TabPages.Add(new TabPage { Text = "Second" });
+                return tabControl;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task TabControl_TabPages_AddAndRemove_UpdatesCountAndControlsAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                Assert.Equal(2, tabControl.TabPages.Count);
+                Assert.Equal(2, tabControl.Controls.Count);
+
+                TabPage newPage = new() { Text = "Third" };
+                tabControl.TabPages.Add(newPage);
+
+                Assert.Equal(3, tabControl.TabPages.Count);
+                Assert.Equal(3, tabControl.Controls.Count);
+                Assert.True(tabControl.TabPages.Contains(newPage));
+
+                tabControl.TabPages.Remove(newPage);
+                Assert.Equal(2, tabControl.TabPages.Count);
+                Assert.False(tabControl.TabPages.Contains(newPage));
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                tabControl.TabPages.Add(new TabPage { Text = "A" });
+                tabControl.TabPages.Add(new TabPage { Text = "B" });
+                return tabControl;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task TabControl_TabPage_Text_RoundTripsAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                tabControl.TabPages[0].Text = "Hello";
+                tabControl.TabPages[1].Text = "&World";
+
+                Assert.Equal("Hello", tabControl.TabPages[0].Text);
+                Assert.Equal("&World", tabControl.TabPages[1].Text);
+                Assert.False(tabControl.TabPages[0].UseVisualStyleBackColor);
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                tabControl.TabPages.Add(new TabPage());
+                tabControl.TabPages.Add(new TabPage());
+                return tabControl;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task TabControl_SelectedIndex_InvalidValue_ThrowsArgumentOutOfRangeExceptionAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                // SelectedIndex only allows values >= -1; anything lower throws.
+                Assert.Throws<ArgumentOutOfRangeException>("value", () => tabControl.SelectedIndex = -5);
+                Assert.Equal(0, tabControl.SelectedIndex);
+
+                tabControl.SelectedIndex = -1;
+                Assert.Equal(-1, tabControl.SelectedIndex);
+
+                tabControl.SelectedIndex = 0;
+                Assert.Equal(0, tabControl.SelectedIndex);
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                tabControl.TabPages.Add(new TabPage());
+                return tabControl;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task TabControl_RowCount_ReflectsMultilineAndTabsAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                tabControl.Multiline = true;
+                tabControl.Alignment = TabAlignment.Top;
+
+                Assert.True(tabControl.RowCount >= 1);
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                tabControl.TabPages.Add(new TabPage());
+                tabControl.TabPages.Add(new TabPage());
+                return tabControl;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task TabControl_GetTabRect_ReturnsNonEmptyForPagesAsync()
+    {
+        await RunSingleControlTestAsync(
+            testDriverAsync: (form, tabControl) =>
+            {
+                Rectangle rect0 = tabControl.GetTabRect(0);
+                Rectangle rect1 = tabControl.GetTabRect(1);
+
+                Assert.True(rect0.Width > 0);
+                Assert.True(rect0.Height > 0);
+                Assert.True(rect1.Width > 0);
+                Assert.True(rect1.Height > 0);
+                Assert.NotEqual(rect0, rect1);
+
+                Assert.Throws<ArgumentOutOfRangeException>(() => tabControl.GetTabRect(99));
+
+                return Task.CompletedTask;
+            },
+            createControl: () =>
+            {
+                TabControl tabControl = new()
+                {
+                    Location = new Point(0, 0)
+                };
+
+                tabControl.TabPages.Add(new TabPage());
+                tabControl.TabPages.Add(new TabPage());
+                return tabControl;
+            });
+    }
 }

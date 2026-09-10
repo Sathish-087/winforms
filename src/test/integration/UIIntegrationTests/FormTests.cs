@@ -159,4 +159,156 @@ public class FormTests : ControlTestBase
         // Verify the hierarchy remains unchanged.
         Assert.True(form2.TopMost || form2.Focused, "Form2 should still be displayed in front after setting MinimumSize");
     }
+
+    [WinFormsFact]
+    public async Task Form_BoundProperties_RoundTripAsync()
+    {
+        await RunEmptyFormTestAsync(form =>
+        {
+            form.Text = "Coverage";
+            form.MinimumSize = new Size(100, 100);
+            form.MaximumSize = new Size(800, 600);
+            form.ClientSize = new Size(250, 200);
+            form.StartPosition = FormStartPosition.Manual;
+            form.FormBorderStyle = FormBorderStyle.FixedDialog;
+            form.ShowInTaskbar = false;
+            form.HelpButton = true;
+            form.KeyPreview = true;
+            form.Opacity = 1.0;
+
+            Assert.Equal("Coverage", form.Text);
+            Assert.Equal(new Size(100, 100), form.MinimumSize);
+            Assert.Equal(new Size(800, 600), form.MaximumSize);
+            Assert.Equal(FormStartPosition.Manual, form.StartPosition);
+            Assert.Equal(FormBorderStyle.FixedDialog, form.FormBorderStyle);
+            Assert.False(form.ShowInTaskbar);
+            Assert.True(form.HelpButton);
+            Assert.True(form.KeyPreview);
+            Assert.Equal(1.0, form.Opacity);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Form_AcceptAndCancelButton_AssignsControlsAsync()
+    {
+        await RunFormWithoutControlAsync(
+            () =>
+            {
+                Form form = new()
+                {
+                    TopMost = true
+                };
+
+                Button accept = new() { Name = "accept" };
+                Button cancel = new() { Name = "cancel" };
+                form.Controls.Add(accept);
+                form.Controls.Add(cancel);
+
+                form.AcceptButton = accept;
+                form.CancelButton = cancel;
+
+                // Preserve the same references so the test can compare after creation.
+                WeakReference acceptRef = new(accept);
+                WeakReference cancelRef = new(cancel);
+                form.Tag = (acceptRef, cancelRef);
+
+                return form;
+            },
+            form =>
+            {
+                Assert.NotNull(form.AcceptButton);
+                Assert.NotNull(form.CancelButton);
+
+                var (acceptRef, cancelRef) = ((WeakReference, WeakReference))form.Tag!;
+                Button? accept = (Button?)acceptRef.Target;
+                Button? cancel = (Button?)cancelRef.Target;
+
+                Assert.NotNull(accept);
+                Assert.NotNull(cancel);
+                Assert.Same(accept, (object?)form.AcceptButton);
+                Assert.Same(cancel, (object?)form.CancelButton);
+
+                return Task.CompletedTask;
+            });
+    }
+
+    [WinFormsFact]
+    public async Task Form_IsMdiContainer_TogglesCorrectlyAsync()
+    {
+        await RunEmptyFormTestAsync(form =>
+        {
+            Assert.False(form.IsMdiContainer);
+            form.IsMdiContainer = true;
+            Assert.True(form.IsMdiContainer);
+            form.IsMdiContainer = false;
+            Assert.False(form.IsMdiContainer);
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Form_TransparencyKey_AssignmentRoundTripsAsync()
+    {
+        await RunEmptyFormTestAsync(form =>
+        {
+            form.TransparencyKey = Color.Magenta;
+            Assert.Equal(Color.Magenta, form.TransparencyKey);
+
+            form.TransparencyKey = Color.Empty;
+            Assert.Equal(Color.Empty, form.TransparencyKey);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Form_ToString_ContainsTypeAndTextAsync()
+    {
+        await RunEmptyFormTestAsync(form =>
+        {
+            form.Text = "CoverageForm";
+
+            string value = form.ToString();
+
+            Assert.Contains("Form", value, StringComparison.Ordinal);
+            Assert.Contains("CoverageForm", value, StringComparison.Ordinal);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Form_AutoScaleMode_RoundTripsAsync()
+    {
+        await RunEmptyFormTestAsync(form =>
+        {
+            Assert.Equal(AutoScaleMode.Inherit, form.AutoScaleMode);
+
+            form.AutoScaleMode = AutoScaleMode.Font;
+            Assert.Equal(AutoScaleMode.Font, form.AutoScaleMode);
+
+            form.AutoScaleMode = AutoScaleMode.Dpi;
+            Assert.Equal(AutoScaleMode.Dpi, form.AutoScaleMode);
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [WinFormsFact]
+    public async Task Form_RestoreBounds_TracksWindowStateChangesAsync()
+    {
+        await RunEmptyFormTestAsync(form =>
+        {
+            form.WindowState = FormWindowState.Normal;
+            form.Size = new Size(400, 300);
+            form.Location = new Point(50, 60);
+
+            Rectangle restoreBounds = form.RestoreBounds;
+            Assert.Equal(new Size(400, 300), restoreBounds.Size);
+
+            return Task.CompletedTask;
+        });
+    }
 }
