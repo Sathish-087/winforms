@@ -10493,10 +10493,10 @@ public unsafe partial class Control :
         {
             Control child = children[i];
 
-            // ContainerControls get their own OnFontChanged Events and scale.
-            // If this scaling is caused by ResumeLayout instead of OnFontChanged,
-            // We would be scaling all container controls.
-            if (child is ContainerControl && causedByFontChanged)
+            // ContainerControls with a handle self-scale from OnFontChanged. Skipping them here
+            // avoids double-scaling. Uncreated containers (for example SplitContainer on a hidden
+            // TabPage) skip PerformAutoScale in OnFontChanged, so the parent must scale them.
+            if (child is ContainerControl { IsHandleCreated: true } && causedByFontChanged)
             {
                 continue;
             }

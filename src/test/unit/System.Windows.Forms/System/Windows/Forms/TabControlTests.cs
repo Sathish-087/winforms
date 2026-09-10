@@ -2150,6 +2150,67 @@ public class TabControlTests
     }
 
     [WinFormsFact]
+    public void TabControl_FontChangeOnHiddenTabPage_ScalesNestedSplitContainerControls()
+    {
+        using Form form = new()
+        {
+            AutoScaleMode = AutoScaleMode.Font
+        };
+        using TabControl tabControl = new()
+        {
+            Dock = DockStyle.Fill
+        };
+        using TabPage firstPage = new();
+        using TabPage secondPage = new();
+        using Button secondPageButton = new()
+        {
+            Location = new Point(100, 60),
+            Size = new Size(90, 30)
+        };
+        using SplitContainer splitContainer = new()
+        {
+            Location = new Point(10, 10),
+            Size = new Size(220, 60),
+            SplitterDistance = 70
+        };
+        using Button splitPanelButton = new()
+        {
+            Location = new Point(20, 10),
+            Size = new Size(90, 30)
+        };
+
+        splitContainer.Panel2.Controls.Add(splitPanelButton);
+        secondPage.Controls.Add(secondPageButton);
+        secondPage.Controls.Add(splitContainer);
+        tabControl.TabPages.Add(firstPage);
+        tabControl.TabPages.Add(secondPage);
+        form.Controls.Add(tabControl);
+        form.Show();
+
+        Assert.Equal(0, tabControl.SelectedIndex);
+        Assert.False(splitContainer.IsHandleCreated);
+        Assert.False(splitPanelButton.IsHandleCreated);
+
+        Rectangle initialSecondPageButtonBounds = secondPageButton.Bounds;
+        Rectangle initialSplitContainerBounds = splitContainer.Bounds;
+        Rectangle initialSplitPanelButtonBounds = splitPanelButton.Bounds;
+
+        form.Font = new Font(form.Font.FontFamily, form.Font.Size * 2F);
+
+        Rectangle splitContainerBoundsAfterFontChange = splitContainer.Bounds;
+        Rectangle splitPanelButtonBoundsAfterFontChange = splitPanelButton.Bounds;
+        Assert.NotEqual(initialSecondPageButtonBounds, secondPageButton.Bounds);
+        Assert.NotEqual(initialSplitContainerBounds, splitContainerBoundsAfterFontChange);
+        Assert.NotEqual(initialSplitPanelButtonBounds, splitPanelButtonBoundsAfterFontChange);
+
+        tabControl.SelectedIndex = 1;
+        Assert.True(splitContainer.IsHandleCreated);
+        Assert.True(splitPanelButton.IsHandleCreated);
+        Assert.Equal(splitContainerBoundsAfterFontChange, splitContainer.Bounds);
+        Assert.Equal(splitPanelButtonBoundsAfterFontChange, splitPanelButton.Bounds);
+    }
+
+    [WinFormsFact]
     public void TabControl_SelectedIndex_SetWithHandler_CallsSelectedIndexChanged()
     {
         using TabControl control = new();

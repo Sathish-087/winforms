@@ -948,7 +948,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
     ///   Scaling by <see cref="OnFontChanged(EventArgs)"/> event does not need to scale child container control as
     ///   they receive their own <see cref="OnFontChanged(EventArgs)"/> event.
     ///  </param>
-    internal void PerformAutoScale(bool includedBounds, bool excludedBounds, bool causedByFontChanged = false)
+    private void PerformAutoScale(bool includedBounds, bool excludedBounds, bool causedByFontChanged = false)
     {
         bool suspended = false;
 

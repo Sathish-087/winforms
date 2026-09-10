@@ -60,8 +60,6 @@ override System.Windows.Forms.ListView.BeginSuspendPaintingCore() -> void
 override System.Windows.Forms.ListView.EndSuspendPaintingCore() -> void
 override System.Windows.Forms.RichTextBox.BeginSuspendPaintingCore() -> void
 override System.Windows.Forms.RichTextBox.EndSuspendPaintingCore() -> void
-override System.Windows.Forms.SplitContainer.OnCreateControl() -> void
-override System.Windows.Forms.SplitContainer.OnFontChanged(System.EventArgs! e) -> void
 override System.Windows.Forms.TreeView.BeginSuspendPaintingCore() -> void
 override System.Windows.Forms.TreeView.EndSuspendPaintingCore() -> void
 System.Windows.Forms.Appearance.ToggleSwitch = 2 -> System.Windows.Forms.Appearance
