@@ -31,9 +31,17 @@ public class ListViewTests : ControlTestBase
 
             Point itemCenter = GetCenter(listView.RectangleToScreen(listView.Items[0].Bounds));
             await MoveMouseAsync(form, itemCenter);
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse.LeftButtonDoubleClick());
+            await InputSimulator.SendAsync(form, inputSimulator =>
+            {
+                if (SystemInformation.MouseButtonsSwapped)
+                {
+                    inputSimulator.Mouse.RightButtonDoubleClick();
+                }
+                else
+                {
+                    inputSimulator.Mouse.LeftButtonDoubleClick();
+                }
+            });
 
             Assert.Equal(listView.Items[0].Checked, expected);
         });
@@ -565,16 +573,33 @@ public class ListViewTests : ControlTestBase
                 Point listViewCenter = GetCenter(listView.RectangleToScreen(listView.Items[0].SubItems[1].Bounds));
                 await MoveMouseAsync(form, listViewCenter);
 
-                await InputSimulator.SendAsync(
-                   form,
-                   inputSimulator => inputSimulator.Keyboard.KeyDown(VIRTUAL_KEY.VK_SHIFT)
-                                                    .Mouse.LeftButtonClick());
+                await InputSimulator.SendAsync(form, inputSimulator =>
+                {
+                    inputSimulator.Keyboard.KeyDown(VIRTUAL_KEY.VK_SHIFT);
+                    if (SystemInformation.MouseButtonsSwapped)
+                    {
+                        inputSimulator.Mouse.RightButtonClick();
+                    }
+                    else
+                    {
+                        inputSimulator.Mouse.LeftButtonClick();
+                    }
+                });
                 listViewCenter = GetCenter(listView.RectangleToScreen(listView.Items[2].SubItems[1].Bounds));
                 await MoveMouseAsync(form, listViewCenter);
-                await InputSimulator.SendAsync(
-                   form,
-                   inputSimulator => inputSimulator.Mouse.LeftButtonClick()
-                                                   .Keyboard.KeyUp(VIRTUAL_KEY.VK_SHIFT));
+                await InputSimulator.SendAsync(form, inputSimulator =>
+                {
+                    if (SystemInformation.MouseButtonsSwapped)
+                    {
+                        inputSimulator.Mouse.RightButtonClick();
+                    }
+                    else
+                    {
+                        inputSimulator.Mouse.LeftButtonClick();
+                    }
+
+                    inputSimulator.Keyboard.KeyUp(VIRTUAL_KEY.VK_SHIFT);
+                });
             }
             else
             {

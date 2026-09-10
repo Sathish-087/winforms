@@ -459,9 +459,17 @@ public class DragDropTests : ControlTestBase
             string dragAcceptRtfTextContent = richTextBox.Text;
 
             await MoveMouseToControlAsync(form.ToolStrip);
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+            await InputSimulator.SendAsync(form, inputSimulator =>
+            {
+                if (SystemInformation.MouseButtonsSwapped)
+                {
+                    inputSimulator.Mouse.RightButtonClick();
+                }
+                else
+                {
+                    inputSimulator.Mouse.LeftButtonClick();
+                }
+            });
 
             Point toolStripItemCoordinates = form.ToolStrip.PointToScreen(new Point(5, 5));
             toolStripItemCoordinates.Offset(0, 40);
@@ -474,12 +482,27 @@ public class DragDropTests : ControlTestBase
             Point virtualPointStart = virtualToolStripItemCoordinates;
             toolStripItemCoordinates.Offset(50, 50);
             Point virtualPointEnd = ToVirtualPoint(toolStripItemCoordinates);
-            await InputSimulator.SendAsync(
-                        form,
-                        inputSimulator => inputSimulator.Mouse.MoveMouseTo(virtualPointStart.X, virtualPointStart.Y)
-                                                                .LeftButtonDown()
-                                                                .MoveMouseTo(virtualPointEnd.X, virtualPointEnd.Y)
-                                                                .LeftButtonUp());
+            await InputSimulator.SendAsync(form, inputSimulator =>
+            {
+                var mouse = inputSimulator.Mouse.MoveMouseTo(virtualPointStart.X, virtualPointStart.Y);
+                if (SystemInformation.MouseButtonsSwapped)
+                {
+                    mouse.RightButtonDown()
+                        .MoveMouseTo(virtualPointEnd.X, virtualPointEnd.Y)
+                        .RightButtonUp();
+                }
+                else
+                {
+                    mouse.LeftButtonDown()
+                        .MoveMouseTo(virtualPointEnd.X, virtualPointEnd.Y)
+                        .LeftButtonUp();
+                }
+            });
+
+            for (int i = 0; i < 10 && string.IsNullOrWhiteSpace(form.RichTextBoxDropTarget.Text); i++)
+            {
+                await WaitForIdleAsync();
+            }
 
             Assert.NotNull(form);
             Assert.NotNull(form.RichTextBoxDropTarget);
@@ -738,7 +761,7 @@ public class DragDropTests : ControlTestBase
         private void ListDragSource_MouseMove(object? sender, MouseEventArgs e)
         {
             _testOutputHelper.WriteLine($"Mouse move on drag source to position ({e.X},{e.Y}) with buttons {e.Button}.");
-            if ((e.Button & MouseButtons.Left) == MouseButtons.Left)
+            if ((e.Button & (MouseButtons.Left | MouseButtons.Right)) != 0)
             {
                 // If the mouse moves outside the rectangle, start the drag.
                 if (_dragBoxFromMouseDown != Rectangle.Empty &&

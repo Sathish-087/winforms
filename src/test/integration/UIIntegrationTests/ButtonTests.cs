@@ -38,9 +38,7 @@ public class ButtonTests : ControlTestBase
             Assert.Equal(DialogResult.None, form.DialogResult);
             Assert.True(form.Visible);
 
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+            await ClickPrimaryButtonAsync(form);
 
             Assert.Equal(CloseReason.None, form.CloseReason);
             Assert.Equal(dialogResult, form.DialogResult);
@@ -116,15 +114,25 @@ public class ButtonTests : ControlTestBase
             var originalFormSize = form.DisplayRectangle.Size;
             var originalButtonPosition = button.DisplayRectangle;
 
-            Point mouseDragHandleOnForm = new(form.DisplayRectangle.Right, form.DisplayRectangle.Top + form.DisplayRectangle.Height / 2);
-            await MoveMouseAsync(form, form.PointToScreen(mouseDragHandleOnForm));
+            Point mouseDragHandleOnForm = new(form.Bounds.Right - 1, form.Bounds.Top + (form.Bounds.Height / 2));
+            await MoveMouseAsync(form, mouseDragHandleOnForm);
 
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse
-                    .LeftButtonDown()
-                    .MoveMouseBy(form.DisplayRectangle.Width, 0)
-                    .LeftButtonUp());
+            await InputSimulator.SendAsync(form, inputSimulator =>
+            {
+                var mouse = inputSimulator.Mouse;
+                if (SystemInformation.MouseButtonsSwapped)
+                {
+                    mouse.RightButtonDown()
+                        .MoveMouseBy(form.Bounds.Width, 0)
+                        .RightButtonUp();
+                }
+                else
+                {
+                    mouse.LeftButtonDown()
+                        .MoveMouseBy(form.Bounds.Width, 0)
+                        .LeftButtonUp();
+                }
+            });
 
             Assert.True(form.DisplayRectangle.Width > originalFormSize.Width);
             Assert.Equal(originalFormSize.Height, form.DisplayRectangle.Height);
@@ -140,15 +148,25 @@ public class ButtonTests : ControlTestBase
             var originalFormSize = form.DisplayRectangle.Size;
             var originalButtonPosition = button.DisplayRectangle;
 
-            Point mouseDragHandleOnForm = new(form.DisplayRectangle.Left + form.DisplayRectangle.Width / 2, form.DisplayRectangle.Bottom);
-            await MoveMouseAsync(form, form.PointToScreen(mouseDragHandleOnForm));
+            Point mouseDragHandleOnForm = new(form.Bounds.Left + (form.Bounds.Width / 2), form.Bounds.Bottom - 1);
+            await MoveMouseAsync(form, mouseDragHandleOnForm);
 
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse
-                    .LeftButtonDown()
-                    .MoveMouseBy(0, form.DisplayRectangle.Height)
-                    .LeftButtonUp());
+            await InputSimulator.SendAsync(form, inputSimulator =>
+            {
+                var mouse = inputSimulator.Mouse;
+                if (SystemInformation.MouseButtonsSwapped)
+                {
+                    mouse.RightButtonDown()
+                        .MoveMouseBy(0, form.Bounds.Height)
+                        .RightButtonUp();
+                }
+                else
+                {
+                    mouse.LeftButtonDown()
+                        .MoveMouseBy(0, form.Bounds.Height)
+                        .LeftButtonUp();
+                }
+            });
 
             Assert.True(form.DisplayRectangle.Height > originalFormSize.Height);
             Assert.Equal(originalFormSize.Width, form.DisplayRectangle.Width);
@@ -159,6 +177,11 @@ public class ButtonTests : ControlTestBase
     [WinFormsFact]
     public async Task Button_Anchor_ResizeOnWindowSizeWiderAsync()
     {
+        if (SystemInformation.MouseButtonsSwapped)
+        {
+            throw Xunit.Sdk.SkipException.ForSkip("Requires non-swapped mouse buttons.");
+        }
+
         await RunTestAsync(async (form, button) =>
         {
             button.Anchor = AnchorStyles.Left | AnchorStyles.Right;
@@ -189,6 +212,11 @@ public class ButtonTests : ControlTestBase
     [WinFormsFact]
     public async Task Button_Anchor_ResizeOnWindowSizeTallerAsync()
     {
+        if (SystemInformation.MouseButtonsSwapped)
+        {
+            throw Xunit.Sdk.SkipException.ForSkip("Requires non-swapped mouse buttons.");
+        }
+
         await RunTestAsync(async (form, button) =>
         {
             button.Anchor = AnchorStyles.Top | AnchorStyles.Bottom;
@@ -228,13 +256,13 @@ public class ButtonTests : ControlTestBase
             control2.Click += (sender, e) => control2ClickCount++;
 
             await MoveMouseToControlAsync(control1);
-            await InputSimulator.SendAsync(form, inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+            await ClickPrimaryButtonAsync(form);
 
             Assert.Equal(1, control1ClickCount);
             Assert.Equal(0, control2ClickCount);
 
             await MoveMouseToControlAsync(control2);
-            await InputSimulator.SendAsync(form, inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+            await ClickPrimaryButtonAsync(form);
 
             Assert.Equal(1, control1ClickCount);
             Assert.Equal(1, control2ClickCount);
@@ -264,10 +292,22 @@ public class ButtonTests : ControlTestBase
 
             await InputSimulator.SendAsync(
                 form,
-                inputSimulator => inputSimulator.Mouse
-                    .LeftButtonDown()
-                    .MoveMouseTo(virtualPoint.X, virtualPoint.Y)
-                    .LeftButtonUp());
+                inputSimulator =>
+                {
+                    var mouse = inputSimulator.Mouse;
+                    if (SystemInformation.MouseButtonsSwapped)
+                    {
+                        mouse.RightButtonDown()
+                            .MoveMouseTo(virtualPoint.X, virtualPoint.Y)
+                            .RightButtonUp();
+                    }
+                    else
+                    {
+                        mouse.LeftButtonDown()
+                            .MoveMouseTo(virtualPoint.X, virtualPoint.Y)
+                            .LeftButtonUp();
+                    }
+                });
 
             Assert.Equal(0, control1ClickCount);
             Assert.Equal(0, control2ClickCount);
@@ -299,11 +339,24 @@ public class ButtonTests : ControlTestBase
             Point virtualPoint1 = new((int)Math.Round(65535.0 / horizontalResolution * centerOnScreen1.X), (int)Math.Round(65535.0 / verticalResolution * centerOnScreen1.Y));
             await InputSimulator.SendAsync(
                 form,
-                inputSimulator => inputSimulator.Mouse
-                    .LeftButtonDown()
-                    .MoveMouseTo(virtualPoint.X, virtualPoint.Y)
-                    .MoveMouseTo(virtualPoint1.X, virtualPoint1.Y)
-                    .LeftButtonUp());
+                inputSimulator =>
+                {
+                    var mouse = inputSimulator.Mouse;
+                    if (SystemInformation.MouseButtonsSwapped)
+                    {
+                        mouse.RightButtonDown()
+                            .MoveMouseTo(virtualPoint.X, virtualPoint.Y)
+                            .MoveMouseTo(virtualPoint1.X, virtualPoint1.Y)
+                            .RightButtonUp();
+                    }
+                    else
+                    {
+                        mouse.LeftButtonDown()
+                            .MoveMouseTo(virtualPoint.X, virtualPoint.Y)
+                            .MoveMouseTo(virtualPoint1.X, virtualPoint1.Y)
+                            .LeftButtonUp();
+                    }
+                });
 
             Assert.Equal(1, control1ClickCount);
             Assert.Equal(0, control2ClickCount);
@@ -357,16 +410,40 @@ public class ButtonTests : ControlTestBase
     {
         await RunTestAsync(async (form, button) =>
         {
-            Assert.True(InputLanguage.CurrentInputLanguage.LayoutName == "US", "Please, switch to the US input language");
+            InputLanguage currentInputLanguage = InputLanguage.CurrentInputLanguage;
+            InputLanguage? usInputLanguage = null;
+            foreach (InputLanguage inputLanguage in InputLanguage.InstalledInputLanguages)
+            {
+                if (inputLanguage.LayoutName == "US")
+                {
+                    usInputLanguage = inputLanguage;
+                    break;
+                }
+            }
+
+            if (usInputLanguage is null)
+            {
+                throw Xunit.Sdk.SkipException.ForSkip("US input language is not installed on this machine.");
+            }
+
             bool wasClicked = false;
 
             button.Text = "&Click";
             button.Click += (x, y) => wasClicked = true;
 
-            // Send the shortcut ALT+C (the same as SendKeys.SendWait("%C"))
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Keyboard.ModifiedKeyStroke(VIRTUAL_KEY.VK_LMENU, VIRTUAL_KEY.VK_C));
+            try
+            {
+                InputLanguage.CurrentInputLanguage = usInputLanguage;
+
+                // Send the shortcut ALT+C (the same as SendKeys.SendWait("%C"))
+                await InputSimulator.SendAsync(
+                    form,
+                    inputSimulator => inputSimulator.Keyboard.ModifiedKeyStroke(VIRTUAL_KEY.VK_LMENU, VIRTUAL_KEY.VK_C));
+            }
+            finally
+            {
+                InputLanguage.CurrentInputLanguage = currentInputLanguage;
+            }
 
             Assert.True(wasClicked);
         });
@@ -623,5 +700,20 @@ public class ButtonTests : ControlTestBase
                     Size = new(500, 300),
                 };
             });
+    }
+
+    private async Task ClickPrimaryButtonAsync(Form form)
+    {
+        await InputSimulator.SendAsync(form, inputSimulator =>
+        {
+            if (SystemInformation.MouseButtonsSwapped)
+            {
+                inputSimulator.Mouse.RightButtonClick();
+            }
+            else
+            {
+                inputSimulator.Mouse.LeftButtonClick();
+            }
+        });
     }
 }

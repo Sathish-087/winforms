@@ -24,9 +24,7 @@ public class MonthCalendarTests : ControlTestBase
         await RunTestAsync(async (form, calendar) =>
         {
             await MoveMouseToControlAsync(calendar);
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+            await ClickPrimaryButtonAsync(form);
         });
     }
 
@@ -146,9 +144,7 @@ public class MonthCalendarTests : ControlTestBase
             TaskCompletionSource<VoidResult> dateChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
             calendar.DateChanged += (sender, e) => dateChanged.TrySetResult(default);
 
-            await InputSimulator.SendAsync(
-                form,
-                inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+            await ClickPrimaryButtonAsync(form);
 
             await dateChanged.Task;
 
@@ -180,20 +176,44 @@ public class MonthCalendarTests : ControlTestBase
     private async Task ClickOnDateAsync(Form form, MonthCalendar calendar, DateTime date)
     {
         await MoveMouseAsync(form, GetCellPositionByDate(calendar, date));
-        await InputSimulator.SendAsync(
-            form,
-            inputSimulator => inputSimulator.Mouse.LeftButtonClick());
+        await ClickPrimaryButtonAsync(form);
     }
 
     private async Task ClickOnDateTwiceAsync(Form form, MonthCalendar calendar, DateTime date)
     {
         await MoveMouseAsync(form, GetCellPositionByDate(calendar, date));
-        await InputSimulator.SendAsync(
-            form,
-            inputSimulator => inputSimulator.Mouse
-                                            .LeftButtonClick()
-                                            .Sleep(TimeSpan.FromMilliseconds(500))
-                                            .LeftButtonClick());
+        await InputSimulator.SendAsync(form, inputSimulator =>
+        {
+            if (SystemInformation.MouseButtonsSwapped)
+            {
+                inputSimulator.Mouse
+                    .RightButtonClick()
+                    .Sleep(TimeSpan.FromMilliseconds(500))
+                    .RightButtonClick();
+            }
+            else
+            {
+                inputSimulator.Mouse
+                    .LeftButtonClick()
+                    .Sleep(TimeSpan.FromMilliseconds(500))
+                    .LeftButtonClick();
+            }
+        });
+    }
+
+    private async Task ClickPrimaryButtonAsync(Form form)
+    {
+        await InputSimulator.SendAsync(form, inputSimulator =>
+        {
+            if (SystemInformation.MouseButtonsSwapped)
+            {
+                inputSimulator.Mouse.RightButtonClick();
+            }
+            else
+            {
+                inputSimulator.Mouse.LeftButtonClick();
+            }
+        });
     }
 
     private async Task RunClickTestAsync(Func<Form, MonthCalendar, Task> runTest)
