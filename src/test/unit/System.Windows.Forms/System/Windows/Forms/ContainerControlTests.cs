@@ -546,6 +546,51 @@ public class ContainerControlTests
         Assert.False(control.GetTopLevel());
     }
 
+    [WinFormsFact]
+    public void ContainerControl_OnControlAdded_WithPendingAutoScale_ScalesControlBounds()
+    {
+        using SubContainerControl container = new()
+        {
+            AutoScaleMode = AutoScaleMode.Font
+        };
+
+        typeof(ContainerControl).GetField("_currentAutoScaleFactor", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(container, new SizeF(2F, 2F));
+
+        using Control child = new()
+        {
+            Bounds = new Rectangle(100, 40, 120, 50)
+        };
+
+        container.Controls.Add(child);
+
+        Assert.Equal(new Rectangle(200, 80, 240, 100), child.Bounds);
+    }
+
+    [WinFormsFact]
+    public void ContainerControl_OnControlAdded_AfterHandleCreated_DoesNotScaleControlBounds()
+    {
+        using SubContainerControl container = new()
+        {
+            AutoScaleMode = AutoScaleMode.Font
+        };
+
+        typeof(ContainerControl).GetField("_currentAutoScaleFactor", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(container, new SizeF(2F, 2F));
+
+        container.CreateControl();
+        Assert.True(container.IsHandleCreated);
+
+        using Control child = new()
+        {
+            Bounds = new Rectangle(100, 40, 120, 50)
+        };
+
+        container.Controls.Add(child);
+
+        Assert.Equal(new Rectangle(100, 40, 120, 50), child.Bounds);
+    }
+
     [WinFormsTheory]
     [EnumData<AutoScaleMode>]
     public void PerformAutoScale_InvokeWithoutChildren_Success(AutoScaleMode autoScaleMode)

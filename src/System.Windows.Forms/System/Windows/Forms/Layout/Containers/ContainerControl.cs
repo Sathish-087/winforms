@@ -892,10 +892,15 @@ public class ContainerControl : ScrollableControl, IContainerControl
     /// </summary>
     protected override void OnControlAdded(ControlEventArgs e)
     {
-        SizeF factor = _currentAutoScaleFactor;
-        if (e.Control is not null && (factor.Width != 1.0f || factor.Height != 1.0f))
+        if (e.Control is { } control
+            && !IsHandleCreated
+            && AutoScaleMode is not AutoScaleMode.None and not AutoScaleMode.Inherit)
         {
-            e.Control.Scale(factor);
+            SizeF factor = _currentAutoScaleFactor;
+            if (factor.Width != 1.0F || factor.Height != 1.0F)
+            {
+                control.Scale(factor);
+            }
         }
 
         base.OnControlAdded(e);
