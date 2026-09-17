@@ -804,10 +804,16 @@ internal partial class DefaultLayout : LayoutEngine
                     anchorInfo.Top = oldAnchorInfo.Bottom - cachedBounds.Height;
                 }
             }
-            else if (ScaleHelper.IsScalingRequirementMet && oldAnchorInfo.Bottom < 0 && proposedBottom < oldAnchorInfo.Bottom && elementBounds.Height <= cachedBounds.Height)
+            else if (ScaleHelper.IsScalingRequirementMet
+                && oldAnchorInfo.Bottom < 0
+                && anchorInfo.Bottom <= parentHeight
+                && proposedBottom < oldAnchorInfo.Bottom
+                && elementBounds.Y == cachedBounds.Y
+                && elementBounds.Height == cachedBounds.Height)
             {
-                // To check if the control is anchored to the bottom and the proposed bottom is less than the old anchor info bottom,
-                // then need to reuse the old anchor info to prevent losing control beyond the bottom edge.
+                // During DPI/layout transitions, parent size may temporarily grow while the control
+                // remains unchanged and inside parent bounds. Preserve the previous bottom anchor
+                // instead of rebaking a more negative margin.
                 anchorInfo.Bottom = oldAnchorInfo.Bottom;
                 if (!IsAnchored(anchor, AnchorStyles.Top))
                 {

@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Drawing;
+using System.Windows.Forms.Layout;
 using Windows.Win32.UI.HiDpi;
 
 namespace System.Windows.Forms.UITests.Dpi;
@@ -70,6 +71,81 @@ public class SplitContainerTests : ControlTestBase
         {
             // Reset back to original awareness context.
             PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
+        }
+    }
+
+    [WinFormsFact]
+    public void SplitContainer_ListBoxAnchoredAll_TemporaryPanelGrowth_PreservesBottomAnchorInfo()
+    {
+        using AnchorLayoutV2Scope scope = new(enable: false);
+        bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+        typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+
+        try
+        {
+            using Form form = new()
+            {
+                AutoScaleMode = AutoScaleMode.None,
+                ClientSize = new Size(400, 800)
+            };
+
+            using SplitContainer splitContainer = new()
+            {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Horizontal,
+                FixedPanel = FixedPanel.Panel2,
+                SplitterDistance = 600
+            };
+
+            using ListBox listBox = new()
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Location = new Point(10, 10),
+                Size = new Size(60, 20)
+            };
+
+            listBox.Items.AddRange(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]);
+            splitContainer.Panel1.Controls.Add(listBox);
+            form.Controls.Add(splitContainer);
+            form.Show();
+
+            Rectangle oldBounds = listBox.Bounds;
+            int oldPanelDisplayHeight = splitContainer.Panel1.DisplayRectangle.Height;
+            Size oldClientSize = form.ClientSize;
+            Assert.False(typeof(DefaultLayout).TestAccessor.Dynamic.UseAnchorLayoutV2(listBox));
+
+            int baselineBottom = listBox.Bottom - oldPanelDisplayHeight;
+            Assert.True(baselineBottom < 0);
+            DefaultLayout.AnchorInfo oldAnchorInfo = new()
+            {
+                Bottom = baselineBottom
+            };
+
+            DefaultLayout.SetAnchorInfo(listBox, oldAnchorInfo);
+
+            splitContainer.Panel1.SuspendLayout();
+            form.ClientSize = new Size(oldClientSize.Width, oldClientSize.Height + 3);
+            DefaultLayout.AnchorInfo? anchorInfoBeforeRebake = DefaultLayout.GetAnchorInfo(listBox);
+            Assert.NotNull(anchorInfoBeforeRebake);
+            Assert.True(splitContainer.Panel1.DisplayRectangle.Height > oldPanelDisplayHeight);
+            Assert.Equal(oldBounds, listBox.Bounds);
+
+            int proposedBottom = listBox.Bottom - splitContainer.Panel1.DisplayRectangle.Height;
+            Assert.True(proposedBottom < baselineBottom);
+
+            // Simulates the intermediate anchor rebake that happens during DPI/layout transitions.
+            typeof(DefaultLayout).TestAccessor.Dynamic.UpdateAnchorInfo(listBox);
+            DefaultLayout.AnchorInfo? anchorInfoAfterRebake = DefaultLayout.GetAnchorInfo(listBox);
+
+            Assert.NotNull(anchorInfoAfterRebake);
+            Assert.Equal(baselineBottom, anchorInfoAfterRebake.Bottom);
+
+            form.ClientSize = oldClientSize;
+            splitContainer.Panel1.ResumeLayout(performLayout: true);
+        }
+        finally
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
         }
     }
 }
