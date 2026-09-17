@@ -462,6 +462,11 @@ public unsafe partial class WebBrowserBase : Control
 
     protected override void OnParentChanged(EventArgs e)
     {
+        // Parent-chain updates can change the logical container (e.g. reparenting into a Form).
+        // Force recalculation so mouse-activation focus logic uses the current container.
+        _containingControl = null;
+        SetAXHostState(WebBrowserHelper.s_recomputeContainingControl, true);
+
         Control? parent = ParentInternal;
         if ((Visible && parent is not null && parent.Visible) || IsHandleCreated)
         {
@@ -691,10 +696,10 @@ public unsafe partial class WebBrowserBase : Control
     {
         get
         {
-            if (_containingControl is null ||
-                GetAXHostState(WebBrowserHelper.s_recomputeContainingControl))
+            ContainerControl? containingControl = FindContainerControlInternal();
+            if (!ReferenceEquals(_containingControl, containingControl))
             {
-                _containingControl = FindContainerControlInternal();
+                _containingControl = containingControl;
             }
 
             return _containingControl;

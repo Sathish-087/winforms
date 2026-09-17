@@ -4470,6 +4470,7 @@ public class WebBrowserTests
         using Button button = new();
 
         splitContainer.Panel1.Controls.Add(control);
+        Assert.Same(splitContainer, control.GetContainingControl());
         splitContainer.Panel2.Controls.Add(button);
         form.Controls.Add(splitContainer);
         form.Show();
@@ -4500,6 +4501,7 @@ public class WebBrowserTests
         using Button button = new();
 
         splitContainer.Panel1.Controls.Add(control);
+        Assert.Same(splitContainer, control.GetContainingControl());
         splitContainer.Panel2.Controls.Add(button);
         form.Controls.Add(splitContainer);
         form.Show();
@@ -4518,6 +4520,22 @@ public class WebBrowserTests
 
         control.WndProc(ref message);
         Assert.Equal(1, control.FocusInternalCallCount);
+    }
+
+    [WinFormsFact]
+    public void WebBrowser_ContainingControl_ReparentedToForm_RecomputesToForm()
+    {
+        using Form form = new();
+        using SplitContainer splitContainer = new();
+        using FocusTrackingWebBrowser control = new();
+
+        splitContainer.Panel1.Controls.Add(control);
+        Assert.Same(splitContainer, control.GetContainingControl());
+
+        form.Controls.Add(splitContainer);
+        form.Show();
+
+        Assert.Same(form, control.GetContainingControl());
     }
 
     [WinFormsFact]
