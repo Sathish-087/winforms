@@ -6759,17 +6759,22 @@ public partial class ControlTests
             Parent = form
         };
 
+        // Ensure control is fully created first.
         form.Show();
         Assert.NotEqual(IntPtr.Zero, control.Handle);
         Assert.True(control.IsHandleCreated);
         Assert.True(control.Created);
 
+        // Make control hidden (this is the problematic path).
         control.Visible = false;
         Assert.False(control.Visible);
         Assert.True(control.IsHandleCreated);
         Assert.True(control.Created);
 
+        // Recreate handle while hidden.
         control.RecreateHandle();
+
+        // Regression check: hidden control must remain logically created.
         Assert.False(control.Visible);
         Assert.True(control.IsHandleCreated);
         Assert.True(control.Created);
@@ -6785,25 +6790,34 @@ public partial class ControlTests
         };
 
         form.Show();
-        VisibleBindingDataSource dataSource = new() { Visible = true };
-        Binding binding = control.DataBindings.Add(nameof(Control.Visible), dataSource, nameof(VisibleBindingDataSource.Visible));
-
         Assert.NotEqual(IntPtr.Zero, control.Handle);
+
+        VisibleBindingDataSource dataSource = new() { Visible = true };
+        Binding binding = control.DataBindings.Add(
+            nameof(Control.Visible),
+            dataSource,
+            nameof(VisibleBindingDataSource.Visible));
+
         Assert.True(control.Visible);
         Assert.True(control.IsHandleCreated);
         Assert.True(control.Created);
         Assert.True(binding.IsBinding);
 
+        // Binding drives control hidden.
         dataSource.Visible = false;
         Assert.False(control.Visible);
         Assert.True(binding.IsBinding);
 
+        // Recreate while hidden.
         control.RecreateHandle();
+
+        // Regression checks: control remains created and binding stays active.
         Assert.False(control.Visible);
         Assert.True(control.IsHandleCreated);
         Assert.True(control.Created);
         Assert.True(binding.IsBinding);
 
+        // Binding must still be able to show control again.
         dataSource.Visible = true;
         Assert.True(control.Visible);
         Assert.True(binding.IsBinding);

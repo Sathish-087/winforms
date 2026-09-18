@@ -4852,13 +4852,22 @@ public unsafe partial class Control :
     }
 
     /// <summary>
-    ///  Forces the creation of the control if it is visible. This includes the creation of the handle,
-    ///  and any child controls.
+    /// Forces the creation of the control if it is visible. This includes the creation of the handle,
+    /// </summary>
+    /// <param name="ignoreVisible"></param>
+    internal void CreateControl(bool ignoreVisible) => CreateControl(ignoreVisible, ignoreChildVisibility: ignoreVisible);
+
+    /// <summary>
+    /// Forces the creation of the control if it is visible. This includes the creation of the handle,
+    /// and any child controls.
     /// </summary>
     /// <param name="ignoreVisible">
     ///  When <see langword="true"/> create even if the control is not visible.
     /// </param>
-    internal void CreateControl(bool ignoreVisible)
+    /// <param name="ignoreChildVisibility">
+    ///  When <see langword="true"/> create child controls even if they are not visible.
+    /// </param>
+    private void CreateControl(bool ignoreVisible, bool ignoreChildVisibility)
     {
         // Unless specified otherwise, only "create" the control if it is visible for performance. This has the
         // effect of delayed handle creation of hidden controls.
@@ -10056,14 +10065,7 @@ public unsafe partial class Control :
 
             if (created)
             {
-                if (Visible)
-                {
-                    CreateControl();
-                }
-                else if (IsHandleCreated)
-                {
-                    SetState(States.Created, true);
-                }
+                CreateControl(ignoreVisible: true, ignoreChildVisibility: false);
             }
 
             if (
