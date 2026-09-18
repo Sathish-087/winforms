@@ -4898,7 +4898,7 @@ public unsafe partial class Control :
                         control.SetParentHandle(HWND);
                     }
 
-                    control.CreateControl(ignoreVisible);
+                    control.CreateControl(ignoreChildVisibility);
                 }
             }
 
