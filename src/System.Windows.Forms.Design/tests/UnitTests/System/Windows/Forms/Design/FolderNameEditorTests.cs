@@ -41,6 +41,18 @@ public class FolderNameEditorTests
         editor.InitializeDialog();
     }
 
+    [Fact]
+    public void FolderNameEditor_CreateFolderBrowserDialog_MapsCompatibleSettings()
+    {
+        SubFolderNameEditor editor = new();
+
+        using FolderBrowserDialog dialog = editor.CreateFolderBrowserDialog(@"C:\Temp");
+
+        Assert.Equal("Description", dialog.Description);
+        Assert.Equal(Environment.SpecialFolder.MyPictures, dialog.RootFolder);
+        Assert.Equal(@"C:\Temp", dialog.SelectedPath);
+    }
+
     public class FolderBrowserTests : FolderNameEditor
     {
         [Fact]
@@ -104,5 +116,18 @@ public class FolderNameEditorTests
     private class SubFolderNameEditor : FolderNameEditor
     {
         public void InitializeDialog() => base.InitializeDialog(null);
+
+        public FolderBrowserDialog CreateFolderBrowserDialog(object value)
+        {
+            FolderBrowser folderBrowser = new();
+            InitializeDialog(folderBrowser);
+            return FolderNameEditor.CreateFolderBrowserDialog(folderBrowser, value);
+        }
+
+        protected override void InitializeDialog(FolderBrowser folderBrowser)
+        {
+            folderBrowser.Description = "Description";
+            folderBrowser.StartLocation = FolderBrowserFolder.MyPictures;
+        }
     }
 }

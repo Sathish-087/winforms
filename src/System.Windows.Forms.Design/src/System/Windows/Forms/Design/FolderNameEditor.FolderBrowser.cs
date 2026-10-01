@@ -24,6 +24,8 @@ public partial class FolderNameEditor
         /// </summary>
         public string DirectoryPath { get; private set; } = string.Empty;
 
+        internal void SetDirectoryPath(string directoryPath) => DirectoryPath = directoryPath;
+
         /// <summary>
         ///  Gets/sets the start location of the root node.
         /// </summary>

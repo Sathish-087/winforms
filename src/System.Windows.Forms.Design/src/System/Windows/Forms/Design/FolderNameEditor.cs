@@ -22,12 +22,31 @@ public partial class FolderNameEditor : UITypeEditor
             InitializeDialog(_folderBrowser);
         }
 
-        if (_folderBrowser.ShowDialog() == DialogResult.OK)
+        using FolderBrowserDialog folderBrowserDialog = CreateFolderBrowserDialog(_folderBrowser, value);
+
+        if (folderBrowserDialog.ShowDialog() != DialogResult.OK)
         {
-            return _folderBrowser.DirectoryPath;
+            return value;
         }
 
-        return value;
+        _folderBrowser.SetDirectoryPath(folderBrowserDialog.SelectedPath);
+        return folderBrowserDialog.SelectedPath;
+    }
+
+    private protected static FolderBrowserDialog CreateFolderBrowserDialog(FolderBrowser folderBrowser, object? value)
+    {
+        FolderBrowserDialog folderBrowserDialog = new()
+        {
+            Description = folderBrowser.Description,
+            RootFolder = (Environment.SpecialFolder)folderBrowser.StartLocation
+        };
+
+        if (value is string stringValue)
+        {
+            folderBrowserDialog.SelectedPath = stringValue;
+        }
+
+        return folderBrowserDialog;
     }
 
     /// <inheritdoc />
