@@ -13073,6 +13073,25 @@ public partial class DataGridView
             PositionEditingControl(setLocation: true, setSize: true, setFocus: false);
         }
 
+        if (IsCurrentCellInEditMode
+            && _ptCurrentCell.X >= 0
+            && _ptCurrentCell.X < Columns.Count
+            && _ptCurrentCell.Y >= 0
+            && _ptCurrentCell.Y < Rows.Count
+            && EditingControl is IDataGridViewEditingControl dataGridViewEditingControl)
+        {
+            DataGridViewCellStyle cellStyle = CurrentCellInternal.GetInheritedStyle(
+                inheritedCellStyle: null,
+                _ptCurrentCell.Y,
+                includeColors: true);
+            CurrentCellInternal.GetFormattedValue(
+                _ptCurrentCell.Y,
+                ref cellStyle,
+                DataGridViewDataErrorContexts.Formatting);
+            _editingPanel!.BackColor = cellStyle.BackColor;
+            dataGridViewEditingControl.ApplyCellStyleToEditingControl(cellStyle);
+        }
+
         GetEvent<DataGridViewCellStyleContentChangedEventHandler>(s_cellStyleContentChangedEvent)?.Invoke(this, e);
     }
 

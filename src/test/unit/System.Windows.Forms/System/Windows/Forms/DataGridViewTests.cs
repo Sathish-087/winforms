@@ -3774,6 +3774,71 @@ public partial class DataGridViewTests : IDisposable
     }
 
     [WinFormsFact]
+    public void DataGridView_RowDefaultCellStyleChangedWhileEditing_UpdatesEditingControl()
+    {
+        _dataGridView.EditMode = DataGridViewEditMode.EditOnEnter;
+        _dataGridView.Columns.Add("Column1", "Column1");
+        _dataGridView.Rows.Add("A");
+        _dataGridView.CreateControl();
+        _dataGridView.CurrentCell = _dataGridView[0, 0];
+        _dataGridView.BeginEdit(selectAll: false);
+
+        try
+        {
+            DataGridViewTextBoxEditingControl editingControl =
+                Assert.IsType<DataGridViewTextBoxEditingControl>(_dataGridView.EditingControl);
+            using Font font = new(_dataGridView.Font, FontStyle.Bold);
+            DataGridViewCellStyle style = _dataGridView.Rows[0].DefaultCellStyle;
+            style.BackColor = Color.LemonChiffon;
+            style.ForeColor = Color.DarkBlue;
+            style.Font = font;
+
+            Assert.Equal(style.BackColor, editingControl.BackColor);
+            Assert.Equal(style.BackColor, _dataGridView.EditingPanel.BackColor);
+            Assert.Equal(style.ForeColor, editingControl.ForeColor);
+            Assert.Equal(style.Font, editingControl.Font);
+        }
+        finally
+        {
+            _dataGridView.CurrentCell = null;
+        }
+    }
+
+    [WinFormsFact]
+    public void DataGridView_CellFormattingChangedWhileEditing_UpdatesEditingControl()
+    {
+        _dataGridView.EditMode = DataGridViewEditMode.EditOnEnter;
+        _dataGridView.Columns.Add("Column1", "Column1");
+        _dataGridView.Rows.Add("A");
+        _dataGridView.CreateControl();
+        DataGridViewCellFormattingEventHandler cellFormattingHandler = (_, e) =>
+        {
+            if (e.ColumnIndex == 0 && e.RowIndex == 0)
+            {
+                e.CellStyle.BackColor = Color.LightBlue;
+            }
+        };
+        _dataGridView.CellFormatting += cellFormattingHandler;
+        _dataGridView.CurrentCell = _dataGridView[0, 0];
+        _dataGridView.BeginEdit(selectAll: false);
+
+        try
+        {
+            DataGridViewTextBoxEditingControl editingControl =
+                Assert.IsType<DataGridViewTextBoxEditingControl>(_dataGridView.EditingControl);
+            _dataGridView.Rows[0].DefaultCellStyle.BackColor = Color.LemonChiffon;
+
+            Assert.Equal(Color.LightBlue, editingControl.BackColor);
+            Assert.Equal(Color.LightBlue, _dataGridView.EditingPanel.BackColor);
+        }
+        finally
+        {
+            _dataGridView.CellFormatting -= cellFormattingHandler;
+            _dataGridView.CurrentCell = null;
+        }
+    }
+
+    [WinFormsFact]
     public void DataGridView_CellLeaveEvent_Raised_Success()
     {
         SubDataGridView dataGridView = new();
