@@ -3169,28 +3169,27 @@ public partial class TreeView : Control
         switch (m.MsgInternal)
         {
             case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
-                if (Nodes.Count <= 0)
-                {
-                    return;
-                }
-
                 int newDeviceDpi = (short)m.WParamInternal.LOWORD;
-                // On certain OS versions, for non-test scenarios, WParam may be empty.
+
                 if (newDeviceDpi == 0)
                 {
                     newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
                 }
 
-                float factor = ((float)newDeviceDpi / OriginalDeviceDpiInternal);
-                foreach (TreeNode rootNode in Nodes)
+                if (newDeviceDpi != DeviceDpiInternal)
                 {
-                    if (rootNode.NodeFont is null)
-                    {
-                        continue;
-                    }
+                    float factor = (float)newDeviceDpi / DeviceDpiInternal;
 
-                    Font scaledFont = rootNode.NodeFont.WithSize(rootNode.NodeFont.Size * factor);
-                    rootNode.NodeFont = scaledFont;
+                    foreach (TreeNode rootNode in Nodes)
+                    {
+                        foreach (TreeNode node in rootNode.GetSelfAndChildNodes())
+                        {
+                            if (node.NodeFont is Font font)
+                            {
+                                node.NodeFont = font.WithSize(font.Size * factor);
+                            }
+                        }
+                    }
                 }
 
                 base.WndProc(ref m);

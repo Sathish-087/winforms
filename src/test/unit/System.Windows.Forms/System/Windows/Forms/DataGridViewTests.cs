@@ -2960,12 +2960,54 @@ public partial class DataGridViewTests : IDisposable
         return new() { DataSource = dt };
     }
 
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_ScalesHeaderFontsAcrossTransitions()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font columnFont = new("Arial", 12);
+        using Font rowFont = new("Arial", 14);
+        using SubDataGridView control = new();
+
+        control.ColumnHeadersDefaultCellStyle.Font = columnFont;
+        control.RowHeadersDefaultCellStyle.Font = rowFont;
+        control.CreateControl();
+
+        int initialDpi = control.DeviceDpi;
+        int intermediateDpi = initialDpi == 96 ? 144 : 96;
+        int finalDpi = intermediateDpi == 96 ? 192 : 96;
+
+        control.InvokeDpiChangedBeforeParent(intermediateDpi);
+
+        Assert.Equal(intermediateDpi, control.DeviceDpiInternalAccessor);
+        Assert.Equal(columnFont.Size * intermediateDpi / initialDpi, control.ColumnHeadersDefaultCellStyle.Font.Size, 3);
+        Assert.Equal(rowFont.Size * intermediateDpi / initialDpi, control.RowHeadersDefaultCellStyle.Font.Size, 3);
+
+        control.InvokeDpiChangedBeforeParent(finalDpi);
+
+        Assert.Equal(finalDpi, control.DeviceDpiInternalAccessor);
+        Assert.Equal(columnFont.Size * finalDpi / initialDpi, control.ColumnHeadersDefaultCellStyle.Font.Size, 3);
+        Assert.Equal(rowFont.Size * finalDpi / initialDpi, control.RowHeadersDefaultCellStyle.Font.Size, 3);
+    }
+
     private class SubDataGridViewCell : DataGridViewCell
     {
     }
 
     private class SubDataGridView : DataGridView
     {
+        internal int DeviceDpiInternalAccessor => base.DeviceDpiInternal;
+
+        internal void InvokeDpiChangedBeforeParent(int newDpi)
+        {
+            Message message = Message.Create(
+                (HWND)Handle,
+                PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
+                (WPARAM)newDpi,
+                (LPARAM)0);
+
+            WndProc(ref message);
+        }
+
         public VisualStylesMode EffectiveVisualStylesModeAccessor => base.EffectiveVisualStylesMode;
 
         public new void OnColumnHeadersHeightChanged(EventArgs e) => base.OnColumnHeadersHeightChanged(e);

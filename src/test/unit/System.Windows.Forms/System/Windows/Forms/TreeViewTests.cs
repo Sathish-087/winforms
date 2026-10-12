@@ -7569,8 +7569,54 @@ public class TreeViewTests
         treeView.VisibleCount.Should().Be(5);
     }
 
+    [WinFormsFact]
+    public void TreeView_WmDpiChangedBeforeParent_ScalesAllExplicitNodeFonts()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font rootFont = new("Arial", 12);
+        using Font childFont = new("Arial", 14);
+        using Font grandchildFont = new("Arial", 16);
+        using SubTreeView control = new();
+        using SubTreeView emptyControl = new();
+
+        TreeNode rootNode = control.Nodes.Add("Root");
+        rootNode.NodeFont = rootFont;
+        TreeNode childNode = rootNode.Nodes.Add("Child");
+        childNode.NodeFont = childFont;
+        TreeNode grandchildNode = childNode.Nodes.Add("Grandchild");
+        grandchildNode.NodeFont = grandchildFont;
+
+        control.CreateControl();
+        emptyControl.CreateControl();
+
+        int initialDpi = control.DeviceDpi;
+        int newDpi = initialDpi == 96 ? 144 : 96;
+
+        control.InvokeDpiChangedBeforeParent(newDpi);
+        emptyControl.InvokeDpiChangedBeforeParent(newDpi);
+
+        Assert.Equal(newDpi, control.DeviceDpiInternalAccessor);
+        Assert.Equal(newDpi, emptyControl.DeviceDpiInternalAccessor);
+        Assert.Equal(rootFont.Size * newDpi / initialDpi, rootNode.NodeFont.Size, 3);
+        Assert.Equal(childFont.Size * newDpi / initialDpi, childNode.NodeFont.Size, 3);
+        Assert.Equal(grandchildFont.Size * newDpi / initialDpi, grandchildNode.NodeFont.Size, 3);
+    }
+
     private class SubTreeView : TreeView
     {
+        internal int DeviceDpiInternalAccessor => base.DeviceDpiInternal;
+
+        internal void InvokeDpiChangedBeforeParent(int newDpi)
+        {
+            Message message = Message.Create(
+                (HWND)Handle,
+                PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
+                (WPARAM)newDpi,
+                (LPARAM)0);
+
+            WndProc(ref message);
+        }
+
         public new bool CanEnableIme => base.CanEnableIme;
 
         public new bool CanRaiseEvents => base.CanRaiseEvents;

@@ -6991,32 +6991,35 @@ public partial class ListView : Control
                 break;
 
             case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
-                if (Items.Count <= 0)
                 {
-                    return;
-                }
+                    int newDeviceDpi = (short)m.WParamInternal.LOWORD;
 
-                int newDeviceDpi = (short)m.WParamInternal.LOWORD;
-                // On certain OS versions, for non-test scenarios, WParam may be empty.
-                if (newDeviceDpi == 0)
-                {
-                    newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
-                }
-
-                float factor = ((float)newDeviceDpi / OriginalDeviceDpiInternal);
-                foreach (ListViewItem rootItem in Items)
-                {
-                    if (rootItem.Font is null)
+                    if (newDeviceDpi == 0)
                     {
-                        continue;
+                        newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
                     }
 
-                    Font scaledFont = rootItem.Font.WithSize(rootItem.Font.Size * factor);
-                    rootItem.Font = scaledFont;
+                    if (!VirtualMode && newDeviceDpi != DeviceDpiInternal)
+                    {
+                        float factor = (float)newDeviceDpi / DeviceDpiInternal;
+
+                        foreach (ListViewItem item in Items)
+                        {
+                            foreach (ListViewSubItem subItem in item.SubItems)
+                            {
+                                if (subItem.CustomStyle && subItem.CustomFont)
+                                {
+                                    Font font = subItem.Font;
+                                    subItem.Font = font.WithSize(font.Size * factor);
+                                }
+                            }
+                        }
+                    }
+
+                    base.WndProc(ref m);
+                    break;
                 }
 
-                base.WndProc(ref m);
-                break;
             case PInvokeCore.WM_KEYUP:
                 var key = (VIRTUAL_KEY)(uint)m.WParamInternal;
 

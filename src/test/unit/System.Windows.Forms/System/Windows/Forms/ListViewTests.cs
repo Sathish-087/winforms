@@ -6066,6 +6066,60 @@ public class ListViewTests
         callCount.Should().Be(4);
     }
 
+    [WinFormsFact]
+    public void ListView_WmDpiChangedBeforeParent_ScalesExplicitFontsAndPreservesInheritedFonts()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font itemFont = new("Arial", 12);
+        using Font subItemFont = new("Arial", 14);
+        using Font listViewFont = new("Arial", 10);
+        using SubListView control = new();
+        using SubListView emptyControl = new();
+
+        control.Font = listViewFont;
+        ListViewItem item = control.Items.Add("Item");
+        item.Font = itemFont;
+        item.SubItems.Add("SubItem").Font = subItemFont;
+        ListViewItem inheritedItem = control.Items.Add("Inherited");
+
+        control.CreateControl();
+        emptyControl.CreateControl();
+
+        int initialDpi = control.DeviceDpi;
+        int newDpi = initialDpi == 96 ? 144 : 96;
+
+        control.InvokeDpiChangedBeforeParent(newDpi);
+        emptyControl.InvokeDpiChangedBeforeParent(newDpi);
+
+        Assert.Equal(newDpi, control.DeviceDpiInternalAccessor);
+        Assert.Equal(newDpi, emptyControl.DeviceDpiInternalAccessor);
+        Assert.Equal(itemFont.Size * newDpi / initialDpi, item.Font.Size, 3);
+        Assert.Equal(subItemFont.Size * newDpi / initialDpi, item.SubItems[1].Font.Size, 3);
+        Assert.Same(control.Font, inheritedItem.Font);
+    }
+
+    [WinFormsFact]
+    public void ListView_WmDpiChangedBeforeParent_VirtualMode_DoesNotEnumerateItems()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListView control = new()
+        {
+            VirtualMode = true,
+            VirtualListSize = 1
+        };
+
+        control.RetrieveVirtualItem += static (sender, e) =>
+            e.Item = new ListViewItem("Virtual item");
+        control.CreateControl();
+
+        int initialDpi = control.DeviceDpi;
+        int newDpi = initialDpi == 96 ? 144 : 96;
+
+        control.InvokeDpiChangedBeforeParent(newDpi);
+
+        Assert.Equal(newDpi, control.DeviceDpiInternalAccessor);
+    }
+
     private class SubListViewItem : ListViewItem
     {
         public AccessibleObject CustomAccessibleObject { get; set; }
@@ -6096,6 +6150,19 @@ public class ListViewTests
 
     private class SubListView : ListView
     {
+        internal int DeviceDpiInternalAccessor => base.DeviceDpiInternal;
+
+        internal void InvokeDpiChangedBeforeParent(int newDpi)
+        {
+            Message message = Message.Create(
+                (HWND)Handle,
+                PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
+                (WPARAM)newDpi,
+                (LPARAM)0);
+
+            WndProc(ref message);
+        }
+
         internal void CallSelectedIndexChanged() => base.OnSelectedIndexChanged(new EventArgs());
 
         public new bool CanEnableIme => base.CanEnableIme;

@@ -30176,7 +30176,7 @@ public partial class DataGridView
                     newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
                 }
 
-                float factor = (float)newDeviceDpi / OriginalDeviceDpiInternal;
+                float factor = (float)newDeviceDpi / DeviceDpiInternal;
                 if (ColumnHeadersDefaultCellStyle?.Font is Font columnFont)
                 {
                     ColumnHeadersDefaultCellStyle.Font = columnFont.WithSize(columnFont.Size * factor);
