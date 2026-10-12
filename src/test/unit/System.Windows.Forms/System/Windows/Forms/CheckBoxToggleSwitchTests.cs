@@ -114,6 +114,31 @@ public class CheckBoxToggleSwitchTests
     }
 
     [WinFormsFact]
+    public void CheckBox_ToggleSwitch_PreferredSize_UseMnemonicFalse_MeasuresLiteralAmpersand()
+    {
+        using CheckBox literalAmpersand = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            FlatStyle = FlatStyle.Standard,
+            Text = "A&B",
+            UseMnemonic = false,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using CheckBox escapedMnemonic = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            FlatStyle = FlatStyle.Standard,
+            Text = "A&&B",
+            UseMnemonic = true,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+
+        Assert.Equal(
+            escapedMnemonic.GetPreferredSize(Size.Empty),
+            literalAmpersand.GetPreferredSize(Size.Empty));
+    }
+
+    [WinFormsFact]
     public void CheckBox_Appearance_ToggleSwitch_RoundTrips()
     {
         using CheckBox checkBox = new() { Appearance = Appearance.ToggleSwitch };
@@ -225,5 +250,31 @@ public class CheckBoxToggleSwitchTests
         using CheckBox checkBox = new();
 
         Assert.Equal(VisualStylesMode.Inherit, checkBox.VisualStylesMode);
+    }
+
+    [WinFormsTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CheckBox_ToggleSwitch_TransparentBackColor_DoesNotThrow(bool useBackgroundImage)
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using Bitmap backgroundImage = new(10, 10);
+        using Panel parent = new() { BackColor = Color.LightBlue, Size = new Size(200, 100) };
+        using CheckBox checkBox = new()
+        {
+            Parent = parent,
+            Appearance = Appearance.ToggleSwitch,
+            VisualStylesMode = VisualStylesMode.Net11,
+            BackColor = Color.Transparent,
+            BackgroundImage = useBackgroundImage ? backgroundImage : null,
+            Size = new Size(140, 36),
+            Text = "Matrix"
+        };
+        parent.CreateControl();
+        using Bitmap bitmap = new(checkBox.Width, checkBox.Height);
+
+        checkBox.DrawToBitmap(bitmap, new Rectangle(Point.Empty, checkBox.Size));
     }
 }
