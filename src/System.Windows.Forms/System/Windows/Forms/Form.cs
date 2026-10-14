@@ -2175,13 +2175,13 @@ public partial class Form : ContainerControl
 
         if (!IsMdiChild)
         {
+            bool wasActive = !value && Active;
             base.SetVisibleCore(value);
-            if (!value
-                && OwnerInternal is Form owner
-                && owner.Visible
-                && owner.IsHandleCreated
-                && !owner.IsDisposed
-                && !owner.Active)
+            if (wasActive
+               && OwnerInternal is Form owner
+               && owner.Visible
+               && owner.IsHandleCreated
+               && !owner.IsDisposed)
             {
                 owner.Activate();
             }

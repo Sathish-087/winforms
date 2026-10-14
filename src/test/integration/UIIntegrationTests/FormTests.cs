@@ -159,4 +159,35 @@ public class FormTests : ControlTestBase
         // Verify the hierarchy remains unchanged.
         Assert.True(form2.TopMost || form2.Focused, "Form2 should still be displayed in front after setting MinimumSize");
     }
+
+    [WinFormsFact]
+    public void Form_HideOwnedChild_ActivatesOwnerOnlyWhenChildWasActive()
+    {
+        using Form owner = new();
+        using Form child = new();
+        using Form popup = new();
+
+        owner.Show();
+        child.Show(owner);
+        popup.Show(child);
+
+        popup.Hide();
+
+        Assert.Same(child, Form.ActiveForm);
+
+        child.Hide();
+
+        Assert.Same(owner, Form.ActiveForm);
+
+        using Form unrelated = new();
+        child.Show(owner);
+        unrelated.Show();
+        unrelated.Activate();
+
+        Assert.Same(unrelated, Form.ActiveForm);
+
+        child.Hide();
+
+        Assert.Same(unrelated, Form.ActiveForm);
+    }
 }
