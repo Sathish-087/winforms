@@ -216,6 +216,60 @@ public class FormDpiTests : ControlTestBase
         }
     }
 
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Form_DpiChanged_ReentrantDpiChange_DoesNotDoubleScaleChildFonts(bool anchorLayoutV2)
+    {
+        // Run tests only on Windows 10 versions that support thread dpi awareness.
+        if (!PlatformDetection.IsWindows10Version1803OrGreater)
+        {
+            return;
+        }
+
+        DPI_AWARENESS_CONTEXT originalAwarenessContext = PInvoke.SetThreadDpiAwarenessContextInternal(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        typeof(ScaleHelper).TestAccessor.Dynamic.InitializeStatics();
+        try
+        {
+            using AnchorLayoutV2Scope scope = new(enable: anchorLayoutV2);
+            using ReentrantDpiForm form = new();
+            form.Show();
+
+            float initialFontSize = form.Font.Size;
+            form.TriggerNestedDpiChange();
+
+            DpiMessageHelper.TriggerDpiMessage(
+                PInvokeCore.WM_DPICHANGED,
+                form,
+                ScaleHelper.OneHundredPercentLogicalDpi * 3 / 2);
+
+            // The nested message supersedes the original transition. Windows subsequently delivers the
+            // notification for the target monitor once the dialog is positioned.
+            Assert.Equal(ScaleHelper.OneHundredPercentLogicalDpi, form.DeviceDpi);
+            Assert.Equal(initialFontSize, form.Font.Size, precision: 3);
+
+            DpiMessageHelper.TriggerDpiMessage(
+                PInvokeCore.WM_DPICHANGED,
+                form,
+                ScaleHelper.OneHundredPercentLogicalDpi * 3 / 2);
+
+            Assert.Equal(ScaleHelper.OneHundredPercentLogicalDpi * 3 / 2, form.DeviceDpi);
+            Assert.Equal(initialFontSize * 1.5F, form.Font.Size, precision: 3);
+            Assert.Equal(form.Font, form.NameTextBox.Font);
+            Assert.Equal(form.Font, form.OkButton.Font);
+
+            DpiMessageHelper.TriggerDpiMessage(PInvokeCore.WM_DPICHANGED, form, ScaleHelper.OneHundredPercentLogicalDpi);
+            Assert.Equal(ScaleHelper.OneHundredPercentLogicalDpi, form.DeviceDpi);
+            Assert.Equal(initialFontSize, form.Font.Size, precision: 3);
+            form.Close();
+        }
+        finally
+        {
+            // Reset back to original awareness context.
+            PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
+        }
+    }
+
     [WinFormsFact]
     public void Form_SizeNotCached_SystemAwareMode()
     {
@@ -240,6 +294,58 @@ public class FormDpiTests : ControlTestBase
         {
             // Reset back to original awareness context.
             PInvoke.SetThreadDpiAwarenessContext(originalAwarenessContext);
+        }
+    }
+
+    /// <summary>
+    ///  Simulates the nested DPI notification that Windows can deliver while positioning a modal dialog.
+    /// </summary>
+    private sealed class ReentrantDpiForm : Form
+    {
+        private bool _triggerNestedDpiChange;
+
+        internal ReentrantDpiForm()
+        {
+            AutoScaleDimensions = new Drawing.SizeF(7F, 15F);
+            AutoScaleMode = AutoScaleMode.Font;
+            ClientSize = new Drawing.Size(400, 140);
+
+            NameTextBox = new TextBox
+            {
+                Location = new Drawing.Point(15, 70),
+                Size = new Drawing.Size(250, 23)
+            };
+
+            OkButton = new Button
+            {
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+                Location = new Drawing.Point(310, 100),
+                Size = new Drawing.Size(75, 27),
+                Text = "OK"
+            };
+
+            Controls.Add(NameTextBox);
+            Controls.Add(OkButton);
+        }
+
+        internal TextBox NameTextBox { get; }
+
+        internal Button OkButton { get; }
+
+        internal void TriggerNestedDpiChange() => _triggerNestedDpiChange = true;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (_triggerNestedDpiChange && m.Msg == PInvokeCore.WM_WINDOWPOSCHANGED)
+            {
+                _triggerNestedDpiChange = false;
+                DpiMessageHelper.TriggerDpiMessage(
+                    PInvokeCore.WM_DPICHANGED,
+                    this,
+                    ScaleHelper.OneHundredPercentLogicalDpi);
+            }
+
+            base.WndProc(ref m);
         }
     }
 }
