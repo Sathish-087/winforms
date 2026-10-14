@@ -809,7 +809,7 @@ internal partial class DefaultLayout : LayoutEngine
                 && anchorInfo.Bottom <= parentHeight
                 && proposedBottom < oldAnchorInfo.Bottom
                 && elementBounds.Y == cachedBounds.Y
-                && elementBounds.Height == cachedBounds.Height)
+                && elementBounds.Height <= cachedBounds.Height)
             {
                 // During DPI/layout transitions, parent size may temporarily grow while the control
                 // remains unchanged and inside parent bounds. Preserve the previous bottom anchor

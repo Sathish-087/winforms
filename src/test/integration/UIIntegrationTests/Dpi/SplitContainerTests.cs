@@ -79,18 +79,17 @@ public class SplitContainerTests : ControlTestBase
     {
         using AnchorLayoutV2Scope scope = new(enable: false);
         bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
-        typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
-
         try
         {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
             using Form form = new()
             {
                 AutoScaleMode = AutoScaleMode.None,
                 ClientSize = new Size(400, 800)
             };
-
             using SplitContainer splitContainer = new()
             {
+                Size = form.ClientSize,
                 Dock = DockStyle.Fill,
                 Orientation = Orientation.Horizontal,
                 FixedPanel = FixedPanel.Panel2,
@@ -103,45 +102,46 @@ public class SplitContainerTests : ControlTestBase
                 Location = new Point(10, 10),
                 Size = new Size(60, 20)
             };
-
             listBox.Items.AddRange(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]);
             splitContainer.Panel1.Controls.Add(listBox);
             form.Controls.Add(splitContainer);
             form.Show();
 
+            Assert.True(listBox.IsHandleCreated);
+            Assert.False(DefaultLayout.UseAnchorLayoutV2(listBox));
+            DefaultLayout.AnchorInfo anchorInfo = Assert.IsType<DefaultLayout.AnchorInfo>(
+                DefaultLayout.GetAnchorInfo(listBox));
             Rectangle oldBounds = listBox.Bounds;
             int oldPanelDisplayHeight = splitContainer.Panel1.DisplayRectangle.Height;
             Size oldClientSize = form.ClientSize;
-            Assert.False(typeof(DefaultLayout).TestAccessor.Dynamic.UseAnchorLayoutV2(listBox));
-
             int baselineBottom = listBox.Bottom - oldPanelDisplayHeight;
             Assert.True(baselineBottom < 0);
-            DefaultLayout.AnchorInfo oldAnchorInfo = new()
-            {
-                Bottom = baselineBottom
-            };
 
-            DefaultLayout.SetAnchorInfo(listBox, oldAnchorInfo);
+            // Establish the baseline after native IntegralHeight adjustment, preserving the other anchors.
+            anchorInfo.Bottom = baselineBottom;
 
             splitContainer.Panel1.SuspendLayout();
-            form.ClientSize = new Size(oldClientSize.Width, oldClientSize.Height + 3);
-            DefaultLayout.AnchorInfo? anchorInfoBeforeRebake = DefaultLayout.GetAnchorInfo(listBox);
-            Assert.NotNull(anchorInfoBeforeRebake);
-            Assert.True(splitContainer.Panel1.DisplayRectangle.Height > oldPanelDisplayHeight);
+            try
+            {
+                form.ClientSize = new Size(oldClientSize.Width, oldClientSize.Height + 3);
+                Assert.Equal(oldPanelDisplayHeight + 3, splitContainer.Panel1.DisplayRectangle.Height);
+                Assert.Equal(oldBounds, listBox.Bounds);
+                int proposedBottom = listBox.Bottom - splitContainer.Panel1.DisplayRectangle.Height;
+                Assert.True(proposedBottom < baselineBottom);
+
+                // Reproduce anchor rebaking during temporary parent growth without injecting cached bounds.
+                typeof(DefaultLayout).TestAccessor.Dynamic.UpdateAnchorInfo(listBox);
+                DefaultLayout.AnchorInfo anchorInfoAfterRebake = Assert.IsType<DefaultLayout.AnchorInfo>(
+                    DefaultLayout.GetAnchorInfo(listBox));
+                Assert.Equal(baselineBottom, anchorInfoAfterRebake.Bottom);
+            }
+            finally
+            {
+                form.ClientSize = oldClientSize;
+                splitContainer.Panel1.ResumeLayout(performLayout: true);
+            }
+
             Assert.Equal(oldBounds, listBox.Bounds);
-
-            int proposedBottom = listBox.Bottom - splitContainer.Panel1.DisplayRectangle.Height;
-            Assert.True(proposedBottom < baselineBottom);
-
-            // Simulates the intermediate anchor rebake that happens during DPI/layout transitions.
-            typeof(DefaultLayout).TestAccessor.Dynamic.UpdateAnchorInfo(listBox);
-            DefaultLayout.AnchorInfo? anchorInfoAfterRebake = DefaultLayout.GetAnchorInfo(listBox);
-
-            Assert.NotNull(anchorInfoAfterRebake);
-            Assert.Equal(baselineBottom, anchorInfoAfterRebake.Bottom);
-
-            form.ClientSize = oldClientSize;
-            splitContainer.Panel1.ResumeLayout(performLayout: true);
         }
         finally
         {
