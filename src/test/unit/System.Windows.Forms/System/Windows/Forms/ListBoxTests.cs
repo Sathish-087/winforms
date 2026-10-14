@@ -1845,6 +1845,34 @@ public class ListBoxTests
         Assert.False(property.ShouldSerializeValue(control));
     }
 
+    [WinFormsFact]
+    public void ListBox_ScaleControl_FontChanged_ClearsCachedIntegralHeightItemCount()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 94)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        int expectedItemCount = control.ClientSize.Height / control.ItemHeight;
+
+        float scaleFactor = 3F;
+        control.ScaleControl(new SizeF(scaleFactor, scaleFactor), BoundsSpecified.All);
+        control.Font = new Font(control.Font.FontFamily, control.Font.Size * scaleFactor, control.Font.Style);
+        Assert.Equal(expectedItemCount, control.ClientSize.Height / control.ItemHeight);
+
+        control.Height = control.ItemHeight * 2 + (control.Height - control.ClientSize.Height);
+        int resizedItemCount = control.ClientSize.Height / control.ItemHeight;
+        Assert.InRange(resizedItemCount, 1, expectedItemCount - 1);
+
+        control.Font = new Font(control.Font.FontFamily, control.Font.Size + 1, control.Font.Style);
+
+        int itemCountAfterFontChange = control.ClientSize.Height / control.ItemHeight;
+        Assert.InRange(itemCountAfterFontChange, 1, expectedItemCount - 1);
+    }
+
     public static IEnumerable<object[]> Items_CustomCreateItemCollection_TestData()
     {
         yield return new object[] { null };

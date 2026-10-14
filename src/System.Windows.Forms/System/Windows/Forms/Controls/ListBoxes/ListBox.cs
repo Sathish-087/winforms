@@ -1838,7 +1838,7 @@ public partial class ListBox : ListControl
         // Avoid the listBox and textbox behavior in Collection editors
         UpdateFontCache();
         AdjustIntegralHeightFromItemCount(integralHeightItemCount);
-        integralHeightItemCountBeforeDpiScaling = 0;
+        _integralHeightItemCountBeforeDpiScaling = 0;
     }
 
     /// <summary>
