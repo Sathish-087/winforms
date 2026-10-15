@@ -33,6 +33,15 @@ public class PrintPreviewDialogTests
         Assert.False(testPrintPreviewDialog.TestProcessDialogKey(arrowKey));
     }
 
+    [WinFormsFact]
+    public void PrintPreviewDialog_ToolStrip_AutoSizeIsEnabled()
+    {
+        using PrintPreviewDialog dialog = new();
+
+        ToolStrip toolStrip = Assert.IsType<ToolStrip>(dialog.Controls["toolStrip1"]);
+        Assert.True(toolStrip.AutoSize);
+    }
+
     private class TestPrintPreviewDialog : PrintPreviewDialog
     {
         internal bool TestProcessDialogKey(Keys keyData)
