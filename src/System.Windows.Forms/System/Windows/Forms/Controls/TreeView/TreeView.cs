@@ -2682,7 +2682,7 @@ public partial class TreeView : Control
         }
     }
 
-    private void WmMouseDown(ref Message m, MouseButtons button, int clicks)
+    private void WmMouseDown(ref Message m, MouseButtons button, int clicks, TreeNode? ownerDrawNode = null)
     {
         // Required to put the TreeView in sane-state for painting proper highlighting of selectedNodes.
         // If the user shows the ContextMenu bu overriding the WndProc( ), then the treeView
@@ -2698,6 +2698,11 @@ public partial class TreeView : Control
         // If Validation is cancelled don't fire any events through the Windows TreeView's message loop.
         if (!ValidationCancelled)
         {
+            if (ownerDrawNode is not null && !ownerDrawNode.IsSelected)
+            {
+                SelectedNode = ownerDrawNode;
+            }
+
             DefWndProc(ref m);
         }
     }
@@ -3314,15 +3319,12 @@ public partial class TreeView : Control
                 }
                 else
                 {
-                    if (DrawMode == TreeViewDrawMode.OwnerDrawAll
+                    TreeNode? ownerDrawNode = DrawMode == TreeViewDrawMode.OwnerDrawAll
                         && (tvhip.flags & TVHITTESTINFO_FLAGS.TVHT_ONITEM) != 0
-                        && NodeFromHandle(_mouseDownNode) is TreeNode node
-                        && !node.IsSelected)
-                    {
-                        SelectedNode = node;
-                    }
+                            ? NodeFromHandle(_mouseDownNode)
+                            : null;
 
-                    WmMouseDown(ref m, MouseButtons.Left, 1);
+                    WmMouseDown(ref m, MouseButtons.Left, 1, ownerDrawNode);
                 }
 
                 _downButton = MouseButtons.Left;

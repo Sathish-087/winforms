@@ -7638,6 +7638,11 @@ public class TreeViewTests
         TreeNode clickedNode = treeView.Nodes[1];
         treeView.SelectedNode = selectedNode;
 
+        List<string> eventOrder = [];
+        treeView.MouseDown += (sender, e) => eventOrder.Add(nameof(treeView.MouseDown));
+        treeView.BeforeSelect += (sender, e) => eventOrder.Add(nameof(treeView.BeforeSelect));
+        treeView.AfterSelect += (sender, e) => eventOrder.Add(nameof(treeView.AfterSelect));
+
         Point clickedLocation = clickedNode.Bounds.Location + new Size(1, 1);
         PInvoke.SetFocus(treeView);
         try
@@ -7649,6 +7654,50 @@ public class TreeViewTests
                 PARAM.FromPoint(clickedLocation));
 
             Assert.Same(clickedNode, treeView.SelectedNode);
+            Assert.Equal(
+                [nameof(treeView.MouseDown), nameof(treeView.BeforeSelect), nameof(treeView.AfterSelect)],
+                eventOrder);
+        }
+        finally
+        {
+            PInvokeCore.SendMessage(
+                treeView,
+                PInvokeCore.WM_LBUTTONUP,
+                (WPARAM)0,
+                PARAM.FromPoint(clickedLocation));
+        }
+    }
+
+    [WinFormsFact]
+    public void TreeView_OwnerDrawAll_MouseDown_DoesNotSelectNodeWhenValidationCancelled()
+    {
+        using SubTreeView treeView = new()
+        {
+            DrawMode = TreeViewDrawMode.OwnerDrawAll,
+            LabelEdit = true,
+            Size = new Size(200, 200)
+        };
+
+        treeView.Nodes.Add("Node 1");
+        treeView.Nodes.Add("Node 2");
+        treeView.CreateControl();
+
+        TreeNode selectedNode = treeView.Nodes[0];
+        TreeNode clickedNode = treeView.Nodes[1];
+        treeView.SelectedNode = selectedNode;
+        treeView.MouseDown += (sender, e) => treeView.ValidationCancelled = true;
+
+        Point clickedLocation = clickedNode.Bounds.Location + new Size(1, 1);
+        PInvoke.SetFocus(treeView);
+        try
+        {
+            PInvokeCore.SendMessage(
+                treeView,
+                PInvokeCore.WM_LBUTTONDOWN,
+                (WPARAM)1,
+                PARAM.FromPoint(clickedLocation));
+
+            Assert.Same(selectedNode, treeView.SelectedNode);
         }
         finally
         {
