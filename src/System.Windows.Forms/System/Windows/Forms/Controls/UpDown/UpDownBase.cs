@@ -1305,15 +1305,19 @@ public abstract partial class UpDownBase : ContainerControl
             case PInvokeCore.WM_KILLFOCUS:
                 DefWndProc(ref m);
                 break;
-            case PInvokeCore.WM_DPICHANGED_AFTERPARENT:
-                _defaultButtonsWidth = LogicalToDeviceUnits(DefaultButtonsWidth);
-                _upDownButtons.Width = _defaultButtonsWidth;
-                base.WndProc(ref m);
-                break;
             default:
                 base.WndProc(ref m);
                 break;
         }
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+
+        _defaultButtonsWidth = LogicalToDeviceUnits(DefaultButtonsWidth);
+        _upDownButtons.Width = _defaultButtonsWidth;
+        PositionControls();
     }
 
     internal override void SetToolTip(ToolTip toolTip)

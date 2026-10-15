@@ -3373,6 +3373,58 @@ public class UpDownBaseTests
         drawToBitmap.Should().NotThrow();
     }
 
+    [WinFormsTheory]
+    [InlineData(96)]
+    [InlineData(192)]
+    [InlineData(288)]
+    public void UpDownBase_DpiChangedAfterParent_ScalesAndRepositionsControls(int deviceDpi)
+    {
+        DPI_AWARENESS_CONTEXT originalAwarenessContext =
+            PInvoke.SetThreadDpiAwarenessContextInternal(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        dynamic scaleHelper = typeof(ScaleHelper).TestAccessor.Dynamic;
+        bool originalProcessPerMonitorAware = scaleHelper.s_processPerMonitorAware;
+        scaleHelper.s_processPerMonitorAware = true;
+
+        try
+        {
+            using SubUpDownBase control = new()
+            {
+                Size = new Size(120, 30)
+            };
+
+            control.DeviceDpiInternal = 96;
+            control.CreateControl();
+
+            Rectangle initialEditBounds = control._upDownEdit.Bounds;
+            Rectangle initialButtonsBounds = control._upDownButtons.Bounds;
+
+            control.DeviceDpiInternal = deviceDpi;
+            control.OnDpiChangedAfterParent(EventArgs.Empty);
+
+            int expectedWidth = ScaleHelper.ScaleToDpi(16, deviceDpi);
+            int expectedButtonGroupWidth = control.UseSideBySideButtons
+                ? (expectedWidth * 2) + ScaleHelper.ScaleToDpi(2, deviceDpi)
+                : expectedWidth;
+
+            Assert.Equal(expectedWidth, control._defaultButtonsWidth);
+            Assert.Equal(expectedButtonGroupWidth, control._upDownButtons.Width);
+            Assert.Equal(
+                initialEditBounds.Width - (expectedButtonGroupWidth - initialButtonsBounds.Width),
+                control._upDownEdit.Width);
+
+            if (deviceDpi != 96)
+            {
+                Assert.NotEqual(initialEditBounds, control._upDownEdit.Bounds);
+                Assert.NotEqual(initialButtonsBounds, control._upDownButtons.Bounds);
+            }
+        }
+        finally
+        {
+            scaleHelper.s_processPerMonitorAware = originalProcessPerMonitorAware;
+            PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
+        }
+    }
+
     private class CustomValidateUpDownBase : UpDownBase
     {
         public new bool ChangingText
@@ -3520,6 +3572,8 @@ public class UpDownBaseTests
         public new bool GetTopLevel() => base.GetTopLevel();
 
         public new void OnChanged(object source, EventArgs e) => base.OnChanged(source, e);
+
+        public new void OnDpiChangedAfterParent(EventArgs e) => base.OnDpiChangedAfterParent(e);
 
         public new void OnFontChanged(EventArgs e) => base.OnFontChanged(e);
 
