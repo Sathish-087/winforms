@@ -7620,6 +7620,46 @@ public class TreeViewTests
         treeView.Nodes[0].EndEdit(cancel: true);
     }
 
+    [WinFormsFact]
+    public void TreeView_OwnerDrawAll_MouseDown_SelectsNodeBeforeMouseUp()
+    {
+        using SubTreeView treeView = new()
+        {
+            DrawMode = TreeViewDrawMode.OwnerDrawAll,
+            LabelEdit = true,
+            Size = new Size(200, 200)
+        };
+
+        treeView.Nodes.Add("Node 1");
+        treeView.Nodes.Add("Node 2");
+        treeView.CreateControl();
+
+        TreeNode selectedNode = treeView.Nodes[0];
+        TreeNode clickedNode = treeView.Nodes[1];
+        treeView.SelectedNode = selectedNode;
+
+        Point clickedLocation = clickedNode.Bounds.Location + new Size(1, 1);
+        PInvoke.SetFocus(treeView);
+        try
+        {
+            PInvokeCore.SendMessage(
+                treeView,
+                PInvokeCore.WM_LBUTTONDOWN,
+                (WPARAM)1,
+                PARAM.FromPoint(clickedLocation));
+
+            Assert.Same(clickedNode, treeView.SelectedNode);
+        }
+        finally
+        {
+            PInvokeCore.SendMessage(
+                treeView,
+                PInvokeCore.WM_LBUTTONUP,
+                (WPARAM)0,
+                PARAM.FromPoint(clickedLocation));
+        }
+    }
+
     private class SubTreeView : TreeView
     {
         public new bool CanEnableIme => base.CanEnableIme;

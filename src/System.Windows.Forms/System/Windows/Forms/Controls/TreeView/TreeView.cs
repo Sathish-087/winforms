@@ -3314,6 +3314,14 @@ public partial class TreeView : Control
                 }
                 else
                 {
+                    if (DrawMode == TreeViewDrawMode.OwnerDrawAll
+                        && (tvhip.flags & TVHITTESTINFO_FLAGS.TVHT_ONITEM) != 0
+                        && NodeFromHandle(_mouseDownNode) is TreeNode node
+                        && !node.IsSelected)
+                    {
+                        SelectedNode = node;
+                    }
+
                     WmMouseDown(ref m, MouseButtons.Left, 1);
                 }
 
