@@ -1485,24 +1485,9 @@ public partial class ToolStripDropDown : ToolStrip
         }
     }
 
-    /// <summary>
-    ///  Scale this form. Form overrides this to enforce a maximum / minimum size.
-    /// </summary>
     protected override void ScaleControl(SizeF factor, BoundsSpecified specified)
     {
         base.ScaleControl(factor, specified);
-
-        Size minSize = MinimumSize;
-        Size maxSize = MaximumSize;
-        if (!MinimumSize.IsEmpty)
-        {
-            MinimumSize = ScaleSize(minSize, factor.Width, factor.Height);
-        }
-
-        if (!MaximumSize.IsEmpty)
-        {
-            MaximumSize = ScaleSize(maxSize, factor.Width, factor.Height);
-        }
     }
 
     /// <summary>

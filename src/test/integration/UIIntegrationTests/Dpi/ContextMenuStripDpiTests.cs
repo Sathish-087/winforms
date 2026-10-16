@@ -13,10 +13,8 @@ public class ContextMenuStripDpiTests : ControlTestBase
     {
     }
 
-    [WinFormsTheory]
-    // Use a DPI that differs from common ambient values (96/192) so BEFOREPARENT does not early-out.
-    [InlineData(3.5 * ScaleHelper.OneHundredPercentLogicalDpi)]
-    public void ContextMenuStrip_TopLevel_DpiChanged_ScalesFontAndItemMetrics(int newDpi)
+    [WinFormsFact]
+    public async Task ContextMenuStrip_TopLevel_MovingToDifferentDpiMonitor_ScalesMetrics()
     {
         // Run tests only on Windows 10 versions that support thread dpi awareness.
         if (!PlatformDetection.IsWindows10Version1803OrGreater)
@@ -43,22 +41,28 @@ public class ContextMenuStripDpiTests : ControlTestBase
 
             form.Show();
 
-            // ContextMenuStrip is top-level: the OS only delivers WM_DPICHANGED (not BEFOREPARENT),
-            // and WinForms intentionally does not scale non-Form top-levels on WM_DPICHANGED.
-            // Product scaling for CMS is HandleHighDpi after RecreateHandle when DeviceDpi differs
-            // from GetDpiForWindow (see ContextMenuStrip.SetVisibleCore). Synthetic WM_DPICHANGED
-            // does not change the HWND DPI, so Close/Show cannot force that path here.
-            // Exercise the same Control DPI path used by ToolStripItemDpiTests: inject BEFOREPARENT
-            // so DeviceDpi, Font, and ToolStrip private metrics rescale.
+            // ContextMenuStrip is top-level and receives WM_DPICHANGED, which WinForms does not
+            // use to scale non-Form top-level controls directly. ContextMenuStrip.SetVisibleCore
+            // recreates the handle after the popup is reopened when its window DPI changes.
             contextMenu.Show(form, new Point(10, 10));
 
             float initialFontSize = contextMenu.Font.Size;
             Size initialSize = contextMenu.Size;
             Size initialItemSize = item.Size;
             Size initialImageScalingSize = contextMenu.ImageScalingSize;
+            int initialDpi = (int)PInvoke.GetDpiForWindow(contextMenu);
 
-            DpiMessageHelper.TriggerDpiMessage(PInvokeCore.WM_DPICHANGED_BEFOREPARENT, contextMenu, newDpi);
+            contextMenu.Close();
 
+            int? targetDpi = await MoveToDifferentDpiMonitorAsync(form, initialDpi);
+            if (targetDpi is null)
+            {
+                return;
+            }
+
+            contextMenu.Show(form, new Point(10, 10));
+
+            Assert.Equal(targetDpi.Value, contextMenu.DeviceDpi);
             Assert.NotEqual(initialFontSize, contextMenu.Font.Size);
             Assert.NotEqual(initialImageScalingSize, contextMenu.ImageScalingSize);
             Assert.NotEqual(initialItemSize, item.Size);
@@ -72,6 +76,30 @@ public class ContextMenuStripDpiTests : ControlTestBase
             // Reset back to original awareness context.
             PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
         }
+    }
+
+    private async Task<int?> MoveToDifferentDpiMonitorAsync(Form form, int initialDpi)
+    {
+        string initialDeviceName = Screen.FromControl(form).DeviceName;
+
+        foreach (Screen screen in Screen.AllScreens)
+        {
+            if (screen.DeviceName == initialDeviceName)
+            {
+                continue;
+            }
+
+            form.Location = screen.WorkingArea.Location;
+            await WaitForIdleAsync();
+
+            int targetDpi = (int)PInvoke.GetDpiForWindow(form);
+            if (targetDpi != initialDpi)
+            {
+                return targetDpi;
+            }
+        }
+
+        return null;
     }
 
     [WinFormsTheory]
@@ -107,18 +135,16 @@ public class ContextMenuStripDpiTests : ControlTestBase
             Size initialMaxSize = dropDown.MaximumSize;
 
             // MinimumSize/MaximumSize are scaled via the public Scale → ScaleControl path,
-            // not via top-level WM_DPICHANGED. ToolStripDropDown.ScaleControl calls
-            // base.ScaleControl (scales Min/Max once) then scales Min/Max again, so the
-            // effective factor is applied twice.
+            // not via top-level WM_DPICHANGED.
             float factor = (float)newDpi / dropDown.DeviceDpi;
             dropDown.Scale(new SizeF(factor, factor));
 
             Size expectedMinSize = new(
-                (int)Math.Round((int)Math.Round(initialMinSize.Width * factor) * factor),
-                (int)Math.Round((int)Math.Round(initialMinSize.Height * factor) * factor));
+                (int)Math.Round(initialMinSize.Width * factor),
+                (int)Math.Round(initialMinSize.Height * factor));
             Size expectedMaxSize = new(
-                (int)Math.Round((int)Math.Round(initialMaxSize.Width * factor) * factor),
-                (int)Math.Round((int)Math.Round(initialMaxSize.Height * factor) * factor));
+                (int)Math.Round(initialMaxSize.Width * factor),
+                (int)Math.Round(initialMaxSize.Height * factor));
 
             Assert.NotEqual(initialMinSize, dropDown.MinimumSize);
             Assert.NotEqual(initialMaxSize, dropDown.MaximumSize);
