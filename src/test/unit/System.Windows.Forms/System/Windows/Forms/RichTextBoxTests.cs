@@ -10871,6 +10871,62 @@ public partial class RichTextBoxTests
         callCount.Should().Be(1);
     }
 
+    [WinFormsFact]
+    public void RichTextBox_DpiChanged_PreservesRtfAndDoesNotRestoreStaleRtf()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if (!ScaleHelper.IsThreadPerMonitorV2Aware)
+        {
+            return;
+        }
+
+        using SubRichTextBox control = new();
+
+        control.Rtf = @"{\rtf1\ansi Original \b formatted\b0 text}";
+        control.CreateControl();
+
+        string expectedRtf = control.Rtf!;
+
+        Message beforeParentMessage = Message.Create(
+            (HWND)control.Handle,
+            PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
+            (WPARAM)(IntPtr)192,
+            IntPtr.Zero);
+
+        control.WndProc(ref beforeParentMessage);
+
+        Message dpiFontMessage = Message.Create(
+            (HWND)control.Handle,
+            PInvokeCore.WM_SETFONT,
+            (WPARAM)IntPtr.Zero,
+            IntPtr.Zero);
+
+        control.WndProc(ref dpiFontMessage);
+
+        Assert.Equal(expectedRtf, control.Rtf);
+
+        Message afterParentMessage = Message.Create(
+            (HWND)control.Handle,
+            PInvokeCore.WM_DPICHANGED_AFTERPARENT,
+            (WPARAM)IntPtr.Zero,
+            IntPtr.Zero);
+
+        control.WndProc(ref afterParentMessage);
+
+        control.AppendText(" updated");
+        string updatedRtf = control.Rtf!;
+
+        Message postDpiFontMessage = Message.Create(
+            (HWND)control.Handle,
+            PInvokeCore.WM_SETFONT,
+            (WPARAM)IntPtr.Zero,
+            IntPtr.Zero);
+
+        control.WndProc(ref postDpiFontMessage);
+
+        Assert.Equal(updatedRtf, control.Rtf);
+    }
+
     private class CustomGetParaFormatRichTextBox : RichTextBox
     {
         public bool MakeCustom { get; set; }

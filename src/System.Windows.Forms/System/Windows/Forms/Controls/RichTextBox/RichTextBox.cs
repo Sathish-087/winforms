@@ -57,6 +57,7 @@ public partial class RichTextBox : TextBoxBase
     private int _bulletIndent;
     private int _rightMargin;
     private string? _textRtf; // If not null, takes precedence over cached Text value
+    private string? _dpiRtf;
     private string? _textPlain;
     private Color _selectionBackColorToSetOnHandleCreated;
     private RichTextBoxLanguageOptions _languageOption = RichTextBoxLanguageOptions.AutoFont | RichTextBoxLanguageOptions.DualFont;
@@ -3603,16 +3604,29 @@ public partial class RichTextBox : TextBoxBase
 
             case PInvokeCore.WM_SETFONT:
                 WmSetFont(ref m);
-                if (_textRtf is not null && Rtf != _textRtf)
+
+                if (_dpiRtf is string dpiRtf && Rtf != dpiRtf)
                 {
-                    Rtf = _textRtf;
+                    Rtf = dpiRtf;
                 }
 
                 break;
 
             case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
-                _textRtf = Rtf;
+                _dpiRtf = Rtf;
                 base.WndProc(ref m);
+                break;
+
+            case PInvokeCore.WM_DPICHANGED_AFTERPARENT:
+                try
+                {
+                    base.WndProc(ref m);
+                }
+                finally
+                {
+                    _dpiRtf = null;
+                }
+
                 break;
 
             case PInvokeCore.WM_IME_NOTIFY:
