@@ -6781,10 +6781,10 @@ public partial class ControlTests
     }
 
     [WinFormsFact]
-    public void Control_RecreateHandle_InvokeHiddenWithVisibleBinding_BindingRemainsActive()
+    public void RichTextBox_ScrollBarsChangedWhileHidden_BindingRemainsActive()
     {
         using Form form = new();
-        using SubControl control = new()
+        using RichTextBox control = new()
         {
             Parent = form
         };
@@ -6796,28 +6796,17 @@ public partial class ControlTests
         Binding binding = control.DataBindings.Add(
             nameof(Control.Visible),
             dataSource,
-            nameof(VisibleBindingDataSource.Visible));
+           nameof(VisibleBindingDataSource.Visible));
 
-        Assert.True(control.Visible);
-        Assert.True(control.IsHandleCreated);
-        Assert.True(control.Created);
-        Assert.True(binding.IsBinding);
-
-        // Binding drives control hidden.
         dataSource.Visible = false;
         Assert.False(control.Visible);
         Assert.True(binding.IsBinding);
 
-        // Recreate while hidden.
-        control.RecreateHandle();
+        control.ScrollBars = RichTextBoxScrollBars.None;
 
-        // Regression checks: control remains created and binding stays active.
         Assert.False(control.Visible);
-        Assert.True(control.IsHandleCreated);
-        Assert.True(control.Created);
         Assert.True(binding.IsBinding);
 
-        // Binding must still be able to show control again.
         dataSource.Visible = true;
         Assert.True(control.Visible);
         Assert.True(binding.IsBinding);

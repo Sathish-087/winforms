@@ -4883,7 +4883,7 @@ public unsafe partial class Control :
     {
         // Unless specified otherwise, only "create" the control if it is visible for performance. This has the
         // effect of delayed handle creation of hidden controls.
-        if (!ignoreVisible && (GetState(States.Created) || !Visible))
+        if (GetState(States.Created) || (!ignoreVisible && !Visible))
         {
             return;
         }
