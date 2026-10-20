@@ -42,7 +42,6 @@ public partial class RichTextBox : TextBoxBase
 
     private const string SZ_RTF_TAG = "{\\rtf";
     private const int CHAR_BUFFER_LEN = 512;
-    private const int Utf8CodePage = 65001;
 
     // Event objects
     private static readonly object s_hscrollEvent = new();
@@ -2917,10 +2916,23 @@ public partial class RichTextBox : TextBoxBase
         }
         else if ((flags & PInvoke.SF_RTF) != 0)
         {
-            // ANSI code pages best-fit characters they cannot represent (β → ß in CP1252).
-            // Stream RTF as UTF-8 and tell RichEdit the code page so literals survive.
-            encodedBytes = Encoding.UTF8.GetBytes(str);
-            flags |= PInvoke.SF_USECODEPAGE | ((uint)Utf8CodePage << 16);
+            StringBuilder rtf = new(str.Length);
+
+            foreach (char character in str)
+            {
+                if (character <= '\x7F')
+                {
+                    rtf.Append(character);
+                }
+                else
+                {
+                    rtf.Append(@"{\uc1\u")
+                        .Append(unchecked((short)character).ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .Append("?}");
+                }
+            }
+
+            encodedBytes = Encoding.ASCII.GetBytes(rtf.ToString());
         }
         else
         {

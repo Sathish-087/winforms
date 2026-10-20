@@ -9772,10 +9772,11 @@ public partial class RichTextBoxTests
         const string inputRtf = @"{\rtf1\ansi\ansicpg1252\deff0 " +
             @"Unicode escape beta: \u946?; " +
             @"Literal beta: β; " +
-            @"Number: 1\~234\~567}";
+            @"ANSI: \'e9; Number: 1" + "\u00A0" + @"234\~567}";
         control.Rtf = inputRtf;
 
-        string expectedText = $"Unicode escape beta: β; Literal beta: β; Number: 1{(char)0xA0}234{(char)0xA0}567";
+        const string expectedText =
+            "Unicode escape beta: β; Literal beta: β; ANSI: é; Number: 1\u00A0234\u00A0567";
         Assert.Equal(expectedText, control.Text);
     }
 
@@ -9786,11 +9787,12 @@ public partial class RichTextBoxTests
 
         const string selectedRtf = @"{\rtf1\ansi\ansicpg1252\deff0 " +
             @"Unicode escape beta: \u946?; " +
-            @"Literal beta: β}";
+            @"Literal beta: β; " +
+            @"ANSI: \'e9}";
 
         control.SelectedRtf = selectedRtf;
 
-        const string expectedText = "Unicode escape beta: β; Literal beta: β";
+        const string expectedText = "Unicode escape beta: β; Literal beta: β; ANSI: é";
         Assert.Equal(expectedText, control.Text);
     }
 
