@@ -179,6 +179,85 @@ public class ContainerControlTests
     }
 
     [WinFormsTheory]
+    [InlineData(false, 0)]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
+    public void ContainerControl_ActiveControl_MdiActivation_PreservesFocusedControl(
+        bool useSplitContainer,
+        int depth)
+    {
+        using Form parent = new() { IsMdiContainer = true };
+        using Form childA = new() { MdiParent = parent };
+        using Form childB = new() { MdiParent = parent };
+        using TextBox first = new() { TabIndex = 0 };
+        using TextBox target = new() { TabIndex = 1, Top = 30 };
+        using TextBox outside = new() { Dock = DockStyle.Bottom, TabIndex = 2 };
+
+        List<ContainerControl> containers = [];
+        Control host = childA;
+
+        for (int i = 0; i < depth; i++)
+        {
+            ContainerControl container = useSplitContainer
+                ? new SplitContainer()
+                : new ContainerControl();
+
+            container.Dock = DockStyle.Fill;
+            host.Controls.Add(container);
+            containers.Add(container);
+            host = container is SplitContainer split
+                ? split.Panel1
+                : container;
+        }
+
+        host.Controls.Add(first);
+        host.Controls.Add(target);
+        childA.Controls.Add(outside);
+
+        parent.Show();
+        parent.Activate();
+        childA.Show();
+        childB.Show();
+        childA.Activate();
+
+        Assert.True(target.Focus());
+        Assert.True(target.Focused);
+
+        for (int activation = 0; activation < 2; activation++)
+        {
+            childB.Activate();
+
+            Assert.Same(childB, parent.ActiveMdiChild);
+            Assert.False(target.Focused);
+            Assert.Same(
+                depth == 0 ? target : containers[0],
+                childA.ActiveControl);
+
+            for (int i = 0; i < containers.Count; i++)
+            {
+                Control expected = i + 1 < containers.Count
+                    ? containers[i + 1]
+                    : target;
+
+                Assert.Same(expected, containers[i].ActiveControl);
+            }
+
+            childA.Activate();
+
+            Assert.Same(childA, parent.ActiveMdiChild);
+            Assert.True(target.Focused);
+        }
+
+        Assert.True(first.Focus());
+        Assert.True(target.Focus());
+        Assert.True(outside.Focus());
+
+        Assert.Same(outside, childA.ActiveControl);
+    }
+
+    [WinFormsTheory]
     [CommonMemberData(typeof(CommonTestHelper), nameof(CommonTestHelper.GetSizeTheoryData), TestIncludeType.NoNegatives)]
     public void ContainerControl_AutoScaleDimensions_Set_GetReturnsExpected(Size value)
     {
