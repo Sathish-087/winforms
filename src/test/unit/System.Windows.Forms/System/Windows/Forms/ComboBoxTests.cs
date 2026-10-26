@@ -2581,12 +2581,73 @@ public class ComboBoxTests
 
         Assert.False(label.Created);
         Assert.Null(visibleBinding.BindingManagerBase);
+        model.IsChecked = true;
 
         tabControl.SelectedTab = tabPage2;
         Application.DoEvents();
         label.CreateControl();
         Assert.True(label.Created);
         Assert.NotNull(visibleBinding.BindingManagerBase);
+        Assert.False(label.Visible);
+
+        checkBox.Checked = false;
+        Assert.False(model.IsChecked);
+        Assert.True(label.Visible);
+
+        checkBox.Checked = true;
+        Assert.True(model.IsChecked);
+        Assert.False(label.Visible);
+    }
+
+    [WinFormsFact]
+    public void TextBox_DataBindingAddedBeforeCreation_BindsWhenCreated()
+    {
+        using Panel panel = new();
+        using TextBox textBox = new();
+        Issue9272DataModel model = new();
+        Binding binding = textBox.DataBindings.Add(
+            nameof(textBox.Text),
+            model,
+            nameof(Issue9272DataModel.TextValue),
+            true,
+            DataSourceUpdateMode.OnPropertyChanged);
+
+        panel.Controls.Add(textBox);
+        panel.BindingContext = new BindingContext();
+
+        Assert.False(textBox.IsHandleCreated);
+        Assert.Null(binding.BindingManagerBase);
+
+        textBox.CreateControl();
+        Assert.True(textBox.IsHandleCreated);
+        Assert.NotNull(binding.BindingManagerBase);
+        textBox.Text = "updated";
+        Assert.Equal("updated", model.TextValue);
+    }
+
+    [WinFormsFact]
+    public void CheckBox_BindingContextReplacedBeforeAndAfterCreation_UpdatesBinding()
+    {
+        using CheckBox checkBox = new();
+        BindingContext context1 = new();
+        BindingContext context2 = new();
+        Issue9272DataModel model = new();
+        checkBox.BindingContext = context1;
+        Binding binding = checkBox.DataBindings.Add(
+            nameof(checkBox.Checked),
+            model,
+            nameof(Issue9272DataModel.IsChecked));
+
+        checkBox.BindingContext = context2;
+
+        Assert.Null(binding.BindingManagerBase);
+
+        checkBox.CreateControl();
+        Assert.Same(context2[model], binding.BindingManagerBase);
+
+        checkBox.BindingContext = context1;
+
+        Assert.Same(context1[model], binding.BindingManagerBase);
     }
 
     public class CustomComboBox : ComboBox
@@ -5102,6 +5163,8 @@ public class ComboBoxTests
         public bool DisableText => !IsChecked;
 
         public int CbbContent { get; set; } = 2;
+
+        public string TextValue { get; set; }
 
         public event PropertyChangedEventHandler PropertyChanged;
 

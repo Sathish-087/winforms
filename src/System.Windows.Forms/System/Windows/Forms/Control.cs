@@ -4852,14 +4852,21 @@ public unsafe partial class Control :
         bool controlIsAlreadyCreated = Created;
         CreateControl(ignoreVisible: false);
 
-        if (!Properties.ContainsKey(s_bindingManagerProperty) && ParentInternal is not null && !controlIsAlreadyCreated)
+        if (!controlIsAlreadyCreated)
         {
-            // We do not want to call our parent's BindingContext property here.
-            // We have no idea if us or any of our children are using data binding,
-            // and invoking the property would just create the binding manager, which
-            // we don't need. We just blindly notify that the binding manager has
-            // changed, and if anyone cares, they will do the comparison at that time.
-            OnBindingContextChanged(EventArgs.Empty);
+            if (!Properties.ContainsKey(s_bindingManagerProperty) && ParentInternal is not null)
+            {
+                // We do not want to call our parent's BindingContext property here.
+                // We have no idea if us or any of our children are using data binding,
+                // and invoking the property would just create the binding manager, which
+                // we don't need. We just blindly notify that the binding manager has
+                // changed, and if anyone cares, they will do the comparison at that time.
+                OnBindingContextChanged(EventArgs.Empty);
+            }
+            else if (Properties.ContainsKey(s_bindingsProperty))
+            {
+                UpdateBindings();
+            }
         }
     }
 
