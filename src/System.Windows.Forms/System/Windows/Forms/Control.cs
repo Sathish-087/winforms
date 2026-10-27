@@ -4852,21 +4852,14 @@ public unsafe partial class Control :
         bool controlIsAlreadyCreated = Created;
         CreateControl(ignoreVisible: false);
 
-        if (!controlIsAlreadyCreated)
+        if (!Properties.ContainsKey(s_bindingManagerProperty) && ParentInternal is not null && !controlIsAlreadyCreated)
         {
-            if (!Properties.ContainsKey(s_bindingManagerProperty) && ParentInternal is not null)
-            {
-                // We do not want to call our parent's BindingContext property here.
-                // We have no idea if us or any of our children are using data binding,
-                // and invoking the property would just create the binding manager, which
-                // we don't need. We just blindly notify that the binding manager has
-                // changed, and if anyone cares, they will do the comparison at that time.
-                OnBindingContextChanged(EventArgs.Empty);
-            }
-            else if (Properties.ContainsKey(s_bindingsProperty))
-            {
-                UpdateBindings();
-            }
+            // We do not want to call our parent's BindingContext property here.
+            // We have no idea if us or any of our children are using data binding,
+            // and invoking the property would just create the binding manager, which
+            // we don't need. We just blindly notify that the binding manager has
+            // changed, and if anyone cares, they will do the comparison at that time.
+            OnBindingContextChanged(EventArgs.Empty);
         }
     }
 
@@ -4923,6 +4916,23 @@ public unsafe partial class Control :
         }
 
         OnCreateControl();
+
+        if (Created && Properties.TryGetValue(s_bindingsProperty, out ControlBindingsCollection? bindings))
+        {
+            for (int i = 0; i < bindings.Count; i++)
+            {
+                Binding binding = bindings[i];
+                if (binding.BindingManagerBase is null)
+                {
+                    // Getting the context can raise notifications that attach this binding.
+                    BindingContext? context = BindingContext;
+                    if (binding.BindingManagerBase is null)
+                    {
+                        BindingContext.UpdateBinding(context, binding);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -11730,7 +11740,17 @@ public unsafe partial class Control :
             // Attach only after Created, matching Binding.SetBindableComponent.
             // Otherwise PushData on a shared PropertyManager can set Visible=false
             // on a not-yet-created control (e.g. on a hidden TabPage).
-            BindingContext.UpdateBinding(Created ? BindingContext : null, DataBindings[i]);
+            BindingContext? context = Created ? BindingContext : null;
+            Binding binding = DataBindings[i];
+            if (context is not null
+                && binding.BindingManagerBase is not null
+                && binding.BindingManagerBase == context[binding.DataSource!, binding.BindingMemberInfo.BindingPath])
+            {
+                // Creation or a reentrant context getter may have already attached this binding.
+                continue;
+            }
+
+            BindingContext.UpdateBinding(context, binding);
         }
     }
 
