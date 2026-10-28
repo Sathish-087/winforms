@@ -4922,11 +4922,11 @@ public unsafe partial class Control :
             for (int i = 0; i < bindings.Count; i++)
             {
                 Binding binding = bindings[i];
-                if (binding.BindingManagerBase is null)
+                if (!binding.IsBinding)
                 {
-                    // Getting the context can raise notifications that attach this binding.
+                    // Getting the context can raise notifications that activate this binding.
                     BindingContext? context = BindingContext;
-                    if (binding.BindingManagerBase is null)
+                    if (Created && binding.BindableComponent == this && !binding.IsBinding)
                     {
                         BindingContext.UpdateBinding(context, binding);
                     }
@@ -11743,10 +11743,11 @@ public unsafe partial class Control :
             BindingContext? context = Created ? BindingContext : null;
             Binding binding = DataBindings[i];
             if (context is not null
+                && binding.IsBinding
                 && binding.BindingManagerBase is not null
                 && binding.BindingManagerBase == context[binding.DataSource!, binding.BindingMemberInfo.BindingPath])
             {
-                // Creation or a reentrant context getter may have already attached this binding.
+                // Skip only active bindings; association before creation does not activate a binding.
                 continue;
             }
 

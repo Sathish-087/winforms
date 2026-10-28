@@ -2758,6 +2758,151 @@ public class ComboBoxTests
         Assert.Equal(1, formatCallCount);
     }
 
+    [WinFormsTheory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void TextBox_BindingAssociatedBeforeCreation_ActivatesWhenCreated(
+        bool parentDriven,
+        bool explicitContext)
+    {
+        BindingContext context = new();
+        using Panel panel = new() { BindingContext = context };
+        using TextBox textBox = new();
+
+        if (explicitContext)
+        {
+            textBox.BindingContext = context;
+        }
+
+        panel.Controls.Add(textBox);
+        Issue9272DataModel model = new() { TextValue = "initial" };
+        Binding binding = textBox.DataBindings.Add(
+            nameof(textBox.Text),
+            model,
+            nameof(Issue9272DataModel.TextValue),
+            true,
+            DataSourceUpdateMode.OnPropertyChanged);
+
+        // Association before creation does not activate the binding.
+        BindingContext.UpdateBinding(context, binding);
+
+        Assert.Same(context[model], binding.BindingManagerBase);
+        Assert.False(binding.IsBinding);
+        Assert.False(textBox.IsHandleCreated);
+
+        if (parentDriven)
+        {
+            panel.CreateControl();
+        }
+        else
+        {
+            textBox.CreateControl();
+        }
+
+        Assert.True(textBox.IsHandleCreated);
+        Assert.True(binding.IsBinding);
+        Assert.Equal("initial", textBox.Text);
+
+        textBox.Text = "updated";
+        Assert.Equal("updated", model.TextValue);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void TextBox_BindingNotifiedDuringCreation_UsesBoundProperty(bool parentDriven, bool explicitContext)
+    {
+        BindingContext context = new();
+        using Panel panel = new() { BindingContext = context };
+        using TextBox existing = new();
+        using TextBox textBox = new();
+        if (explicitContext)
+        {
+            textBox.BindingContext = context;
+        }
+
+        panel.Controls.Add(existing);
+        panel.Controls.Add(textBox);
+        Issue9272DataModel model = new();
+        existing.DataBindings.Add(
+            nameof(existing.Text), model, nameof(Issue9272DataModel.IsChecked), true);
+        existing.CreateControl();
+        Binding binding = textBox.DataBindings.Add(
+            nameof(textBox.Text),
+            model,
+            nameof(Issue9272DataModel.IsChecked),
+            true,
+            DataSourceUpdateMode.OnPropertyChanged);
+        BindingContext.UpdateBinding(context, binding);
+        textBox.HandleCreated += (sender, e) => model.IsChecked = true;
+
+        if (parentDriven)
+        {
+            panel.CreateControl();
+        }
+        else
+        {
+            textBox.CreateControl();
+        }
+
+        Assert.True(binding.IsBinding);
+        Assert.Equal(bool.TrueString, textBox.Text);
+
+        model.IsChecked = false;
+        Assert.Equal(bool.FalseString, textBox.Text);
+
+        textBox.Text = bool.TrueString;
+        Assert.True(model.IsChecked);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void TextBox_BindingRemovedDuringContextResolution_RemainsDetached(bool parentDriven, bool replaceBinding)
+    {
+        using Panel panel = new();
+        using LazyBindingContextTextBox textBox = new();
+        panel.Controls.Add(textBox);
+        Issue9272DataModel model = new() { TextValue = "original" };
+        Issue9272DataModel replacement = new() { TextValue = "replacement" };
+        Binding binding = textBox.DataBindings.Add(
+            nameof(textBox.Text), model, nameof(Issue9272DataModel.TextValue), true);
+        textBox.BindingContextChanged += (sender, e) =>
+        {
+            textBox.DataBindings.Clear();
+            if (replaceBinding)
+            {
+                textBox.DataBindings.Add(
+                    nameof(textBox.Text), replacement, nameof(Issue9272DataModel.TextValue), true);
+            }
+        };
+
+        if (parentDriven)
+        {
+            panel.CreateControl();
+        }
+        else
+        {
+            textBox.CreateControl();
+        }
+
+        Assert.Null(binding.BindableComponent);
+        Assert.Null(binding.BindingManagerBase);
+        Assert.Empty(textBox.BindingContext[model].Bindings);
+        Assert.Equal(replaceBinding ? 1 : 0, textBox.DataBindings.Count);
+        if (replaceBinding)
+        {
+            Assert.Equal("replacement", textBox.Text);
+            Assert.True(textBox.DataBindings[0].IsBinding);
+        }
+    }
+
     [WinFormsFact]
     public void TextBox_BindingContextCleared_DetachesBinding()
     {
