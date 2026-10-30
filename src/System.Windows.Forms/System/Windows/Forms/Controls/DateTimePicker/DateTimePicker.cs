@@ -1550,6 +1550,21 @@ public partial class DateTimePicker : Control
     {
         switch (m.MsgInternal)
         {
+            case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
+                int newDeviceDpi = (short)m.WParamInternal.LOWORD;
+                if (newDeviceDpi == 0)
+                {
+                    newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
+                }
+
+                if (newDeviceDpi != DeviceDpiInternal && _calendarFont is Font calendarFont)
+                {
+                    float factor = (float)newDeviceDpi / DeviceDpiInternal;
+                    CalendarFont = calendarFont.WithSize(calendarFont.Size * factor);
+                }
+
+                base.WndProc(ref m);
+                break;
             case PInvokeCore.WM_LBUTTONDOWN:
                 Focus();
                 if (!ValidationCancelled)

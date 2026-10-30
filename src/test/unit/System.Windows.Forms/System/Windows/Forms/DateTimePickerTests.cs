@@ -367,7 +367,7 @@ public class DateTimePickerTests : IDisposable
     [WinFormsFact]
     public void DateTimePicker_MaxDate_GetSet_ReturnsExpected()
     {
-        _dateTimePicker.MaxDate.ToString().Should().Be("12/31/9998 12:00:00 AM");
+        _dateTimePicker.MaxDate.Should().Be(DateTimePicker.MaximumDateTime);
 
         DateTime expectedDate = new(2022, 12, 31);
         _dateTimePicker.MaxDate = expectedDate;
@@ -401,7 +401,7 @@ public class DateTimePickerTests : IDisposable
     [WinFormsFact]
     public void DateTimePicker_MinDate_GetSet_ReturnsExpected()
     {
-        _dateTimePicker.MinDate.ToString().Should().Be("1/1/1753 12:00:00 AM");
+        _dateTimePicker.MinDate.Should().Be(DateTimePicker.MinimumDateTime);
 
         DateTime expectedDate = DateTimePicker.MinimumDateTime.AddDays(1);
         _dateTimePicker.MinDate = expectedDate;
@@ -473,13 +473,13 @@ public class DateTimePickerTests : IDisposable
         _dateTimePicker.CreateControl();
 
         _dateTimePicker.Text = validDateString;
-        _dateTimePicker.Text.Should().Be(DateTime.Parse(validDateString, CultureInfo.CurrentCulture).ToString("dddd, MMMM d, yyyy"));
+        _dateTimePicker.Text.Should().Be(DateTime.Parse(validDateString, CultureInfo.CurrentCulture).ToLongDateString());
 
         _dateTimePicker.Text = null;
-        _dateTimePicker.Text.Should().Be(DateTime.Parse(DateTime.Now.Date.ToString(), CultureInfo.CurrentCulture).ToString("dddd, MMMM d, yyyy"));
+        _dateTimePicker.Text.Should().Be(DateTime.Now.ToLongDateString());
 
         _dateTimePicker.Text = string.Empty;
-        _dateTimePicker.Text.Should().Be(DateTime.Parse(DateTime.Now.Date.ToString(), CultureInfo.CurrentCulture).ToString("dddd, MMMM d, yyyy"));
+        _dateTimePicker.Text.Should().Be(DateTime.Now.ToLongDateString());
     }
 
     [WinFormsFact]
@@ -1005,8 +1005,69 @@ public class DateTimePickerTests : IDisposable
         Assert.Equal(dt.ToShortTimeString(), dateTimePicker.Text);
     }
 
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DateTimePicker_WmDpiChangedBeforeParent_ScalesExplicitCalendarFontAndPreservesInheritance(bool explicitFont)
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubDateTimePicker control = new();
+        if (explicitFont)
+        {
+            control.CalendarFont = font;
+        }
+
+        control.CreateControl();
+        int oldDpi = control.DeviceDpiInternal;
+        int newDpi = oldDpi == 96 ? 144 : 96;
+        HashSet<Font> scaledFonts = new(ReferenceEqualityComparer.Instance);
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(newDpi);
+            if (explicitFont)
+            {
+                scaledFonts.Add(control.CalendarFont);
+                Assert.Equal(font.Size * newDpi / oldDpi, control.CalendarFont.Size, 3);
+                Font scaledFont = control.CalendarFont;
+                control.InvokeDpiChangedBeforeParent(newDpi);
+                Assert.Same(scaledFont, control.CalendarFont);
+                control.InvokeDpiChangedBeforeParent(oldDpi);
+                scaledFonts.Add(control.CalendarFont);
+                Assert.Equal(font.Size, control.CalendarFont.Size, 3);
+            }
+            else
+            {
+                Assert.Same(control.Font, control.CalendarFont);
+                control.Font = font;
+                Assert.Same(control.Font, control.CalendarFont);
+            }
+        }
+        finally
+        {
+            foreach (Font scaledFont in scaledFonts)
+            {
+                if (!ReferenceEquals(scaledFont, font))
+                {
+                    scaledFont.Dispose();
+                }
+            }
+        }
+    }
+
     public class SubDateTimePicker : DateTimePicker
     {
+        internal void InvokeDpiChangedBeforeParent(int newDpi)
+        {
+            Message message = Message.Create(
+                (HWND)Handle,
+                PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
+                (WPARAM)newDpi,
+                (LPARAM)0);
+            WndProc(ref message);
+        }
+
         public new bool CanEnableIme => base.CanEnableIme;
 
         public new bool CanRaiseEvents => base.CanRaiseEvents;

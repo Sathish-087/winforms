@@ -2989,6 +2989,132 @@ public partial class DataGridViewTests : IDisposable
         Assert.Equal(rowFont.Size * finalDpi / initialDpi, control.RowHeadersDefaultCellStyle.Font.Size, 3);
     }
 
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_ScalesSharedStylesAndTemplateFontsOnce()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubDataGridView control = new() { AllowUserToAddRows = false };
+        DataGridViewCellStyle sharedStyle = new() { Font = font };
+        control.DefaultCellStyle = sharedStyle;
+        control.ColumnHeadersDefaultCellStyle = sharedStyle;
+        control.RowHeadersDefaultCellStyle = sharedStyle;
+        control.RowsDefaultCellStyle = new() { Font = font };
+        control.AlternatingRowsDefaultCellStyle = new() { Font = font };
+        control.TopLeftHeaderCell.Style = new() { Font = font };
+        control.RowTemplate.DefaultCellStyle = new() { Font = font };
+        control.RowTemplate.HeaderCell.Style = new() { Font = font };
+        control.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DefaultCellStyle = new() { Font = font },
+            CellTemplate = new DataGridViewTextBoxCell { Style = new() { Font = font } }
+        });
+        control.Columns[0].HeaderCell.Style = new() { Font = font };
+        control.Rows.Add(3);
+        DataGridViewRow row = control.Rows.SharedRow(0);
+        Assert.Same(row, control.Rows.SharedRow(1));
+        row.Cells[0].Style = sharedStyle;
+        control.CreateControl();
+        DataGridViewRow[] originalRows = control.Rows.SharedList.ToArray();
+        Assert.Same(originalRows[1], originalRows[2]);
+        Assert.Equal(-1, originalRows[1].Index);
+
+        DataGridViewCellStyle[] styles =
+        [
+            sharedStyle, control.RowsDefaultCellStyle, control.AlternatingRowsDefaultCellStyle,
+            control.TopLeftHeaderCell.Style, control.RowTemplate.DefaultCellStyle, control.RowTemplate.HeaderCell.Style,
+            control.Columns[0].DefaultCellStyle, control.Columns[0].CellTemplate.Style,
+            control.Columns[0].HeaderCell.Style, row.DefaultCellStyle, row.HeaderCell.Style
+        ];
+        int oldDpi = control.DeviceDpiInternalAccessor;
+        int newDpi = oldDpi == 96 ? 144 : 96;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(newDpi);
+
+            foreach (DataGridViewCellStyle style in styles)
+            {
+                Assert.Equal(font.Size * newDpi / oldDpi, style.Font.Size, 3);
+                Assert.Same(sharedStyle.Font, style.Font);
+            }
+
+            for (int i = 0; i < originalRows.Length; i++)
+            {
+                Assert.Same(originalRows[i], control.Rows.SharedRow(i));
+            }
+
+            Assert.Equal(-1, originalRows[1].Index);
+        }
+        finally
+        {
+            foreach (Font scaledFont in styles.Select(style => style.Font).Distinct(ReferenceEqualityComparer.Instance).Cast<Font>())
+            {
+                if (!ReferenceEquals(scaledFont, font))
+                {
+                    scaledFont.Dispose();
+                }
+            }
+        }
+    }
+
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_PreservesAmbientFonts()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font replacement = new(FontFamily.GenericSansSerif, 19);
+        using SubDataGridView control = new();
+        DataGridViewCellStyle[] styles =
+        [
+            control.DefaultCellStyle, control.ColumnHeadersDefaultCellStyle, control.RowHeadersDefaultCellStyle
+        ];
+        control.CreateControl();
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+        control.Font = replacement;
+
+        foreach (DataGridViewCellStyle style in styles)
+        {
+            Assert.Same(control.Font, style.Font);
+        }
+    }
+
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_PreservesFontReplacedByCallback()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using Font replacement = new(FontFamily.GenericSansSerif, 21);
+        using SubDataGridView control = new();
+        control.ColumnHeadersDefaultCellStyle.Font = font;
+        control.RowHeadersDefaultCellStyle.Font = font;
+        control.CreateControl();
+        control.ColumnHeadersDefaultCellStyleChanged += (sender, e) =>
+            control.RowHeadersDefaultCellStyle.Font = replacement;
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+            Assert.Same(replacement, control.RowHeadersDefaultCellStyle.Font);
+        }
+        finally
+        {
+            if (!ReferenceEquals(control.ColumnHeadersDefaultCellStyle.Font, font))
+            {
+                control.ColumnHeadersDefaultCellStyle.Font.Dispose();
+            }
+
+            Font rowFont = control.RowHeadersDefaultCellStyle.Font;
+            if (!ReferenceEquals(rowFont, font) && !ReferenceEquals(rowFont, replacement))
+            {
+                rowFont.Dispose();
+            }
+        }
+    }
+
     private class SubDataGridViewCell : DataGridViewCell
     {
     }

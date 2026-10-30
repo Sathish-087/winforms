@@ -3164,6 +3164,39 @@ public partial class TreeView : Control
         }
     }
 
+    private void ScaleNodeFonts(float factor)
+    {
+        Dictionary<TreeNode, Font> fonts = new(ReferenceEqualityComparer.Instance);
+        foreach (TreeNode rootNode in Nodes)
+        {
+            foreach (TreeNode node in rootNode.GetSelfAndChildNodes())
+            {
+                if (node.NodeFont is Font font)
+                {
+                    fonts.TryAdd(node, font);
+                }
+            }
+        }
+
+        Dictionary<Font, Font> scaledFonts = new(ReferenceEqualityComparer.Instance);
+        foreach ((TreeNode node, Font font) in fonts)
+        {
+            // Invalidation callbacks can replace fonts or move nodes to another tree.
+            if (!ReferenceEquals(node.TreeView, this) || !ReferenceEquals(node.NodeFont, font))
+            {
+                continue;
+            }
+
+            if (!scaledFonts.TryGetValue(font, out Font? scaledFont))
+            {
+                scaledFont = font.WithSize(font.Size * factor);
+                scaledFonts.Add(font, scaledFont);
+            }
+
+            node.NodeFont = scaledFont;
+        }
+    }
+
     protected override unsafe void WndProc(ref Message m)
     {
         switch (m.MsgInternal)
@@ -3178,18 +3211,7 @@ public partial class TreeView : Control
 
                 if (newDeviceDpi != DeviceDpiInternal)
                 {
-                    float factor = (float)newDeviceDpi / DeviceDpiInternal;
-
-                    foreach (TreeNode rootNode in Nodes)
-                    {
-                        foreach (TreeNode node in rootNode.GetSelfAndChildNodes())
-                        {
-                            if (node.NodeFont is Font font)
-                            {
-                                node.NodeFont = font.WithSize(font.Size * factor);
-                            }
-                        }
-                    }
+                    ScaleNodeFonts((float)newDeviceDpi / DeviceDpiInternal);
                 }
 
                 base.WndProc(ref m);

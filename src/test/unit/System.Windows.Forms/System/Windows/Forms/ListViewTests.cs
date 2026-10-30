@@ -6183,6 +6183,86 @@ public class ListViewTests
         Assert.Equal(newDpi, control.DeviceDpiInternalAccessor);
     }
 
+    [WinFormsFact]
+    public void ListView_WmDpiChangedBeforeParent_ReusesScaledFont()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubListView control = new();
+        ListViewItem item = control.Items.Add("Item");
+        item.Font = font;
+        ListViewSubItem subItem = item.SubItems.Add("Subitem");
+        subItem.Font = font;
+        control.CreateControl();
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+            Assert.NotSame(font, item.Font);
+            Assert.Same(item.Font, subItem.Font);
+        }
+        finally
+        {
+            if (!ReferenceEquals(item.Font, font))
+            {
+                item.Font.Dispose();
+            }
+
+            if (!ReferenceEquals(subItem.Font, font) && !ReferenceEquals(subItem.Font, item.Font))
+            {
+                subItem.Font.Dispose();
+            }
+        }
+    }
+
+    [WinFormsFact]
+    public void ListView_WmDpiChangedBeforeParent_DoesNotScaleItemMovedByCallback()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubListView control = new();
+        using ListView other = new();
+        ListViewItem first = control.Items.Add("First");
+        ListViewItem moved = control.Items.Add("Moved");
+        first.Font = font;
+        moved.Font = font;
+        control.CreateControl();
+        bool movedByCallback = false;
+        control.Invalidated += (sender, e) =>
+        {
+            if (!movedByCallback && !ReferenceEquals(first.Font, font))
+            {
+                movedByCallback = true;
+                control.Items.Remove(moved);
+                other.Items.Add(moved);
+            }
+        };
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+            Assert.True(movedByCallback);
+            Assert.Same(other, moved.ListView);
+            Assert.Same(font, moved.Font);
+        }
+        finally
+        {
+            if (!ReferenceEquals(first.Font, font))
+            {
+                first.Font.Dispose();
+            }
+
+            if (!ReferenceEquals(moved.Font, font) && !ReferenceEquals(moved.Font, first.Font))
+            {
+                moved.Font.Dispose();
+            }
+        }
+    }
+
     private class SubListViewItem : ListViewItem
     {
         public AccessibleObject CustomAccessibleObject { get; set; }

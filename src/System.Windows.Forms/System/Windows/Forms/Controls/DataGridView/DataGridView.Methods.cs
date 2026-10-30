@@ -30128,6 +30128,106 @@ public partial class DataGridView
         return false;
     }
 
+    private void ScaleCellStyleFonts(float factor)
+    {
+        Dictionary<DataGridViewCellStyle, Font> styles = new(ReferenceEqualityComparer.Instance);
+        AddStyle(_defaultCellStyle);
+        AddStyle(_columnHeadersDefaultCellStyle);
+        AddStyle(_rowHeadersDefaultCellStyle);
+        AddStyle(_rowsDefaultCellStyle);
+        AddStyle(_alternatingRowsDefaultCellStyle);
+        AddCellStyle(_topLeftHeaderCell);
+
+        if (_dataGridViewColumns is not null)
+        {
+            foreach (DataGridViewColumn column in _dataGridViewColumns)
+            {
+                AddBandStyles(column);
+                AddCellStyle(column.CellTemplate);
+            }
+        }
+
+        if (_dataGridViewRows is not null)
+        {
+            // Enumerating Rows would unshare rows. Scale each shared row only once.
+            HashSet<DataGridViewRow> rows = new(ReferenceEqualityComparer.Instance);
+            foreach (DataGridViewRow row in _dataGridViewRows.SharedList)
+            {
+                if (rows.Add(row))
+                {
+                    AddRowStyles(row);
+                }
+            }
+        }
+
+        if (_rowTemplate is not null)
+        {
+            AddRowStyles(_rowTemplate);
+        }
+
+        Dictionary<Font, Font> scaledFonts = new(ReferenceEqualityComparer.Instance);
+        foreach ((DataGridViewCellStyle style, Font font) in styles)
+        {
+            // A preceding style-change callback may have replaced this font.
+            if (!ReferenceEquals(style.Font, font))
+            {
+                continue;
+            }
+
+            if (!scaledFonts.TryGetValue(font, out Font? scaledFont))
+            {
+                scaledFont = font.WithSize(font.Size * factor);
+                scaledFonts.Add(font, scaledFont);
+            }
+
+            style.Font = scaledFont;
+        }
+
+        void AddStyle(DataGridViewCellStyle? style)
+        {
+            // An ambient style can also be shared with a row, column, or cell.
+            if (style?.Font is not Font font
+                || (ReferenceEquals(style, _defaultCellStyle) && _dataGridViewState1[State1_AmbientFont])
+                || (ReferenceEquals(style, _columnHeadersDefaultCellStyle) && _dataGridViewState1[State1_AmbientColumnHeadersFont])
+                || (ReferenceEquals(style, _rowHeadersDefaultCellStyle) && _dataGridViewState1[State1_AmbientRowHeadersFont]))
+            {
+                return;
+            }
+
+            styles.TryAdd(style, font);
+        }
+
+        void AddCellStyle(DataGridViewCell? cell)
+        {
+            if (cell is { HasStyle: true })
+            {
+                AddStyle(cell.Style);
+            }
+        }
+
+        void AddBandStyles(DataGridViewBand band)
+        {
+            if (band.HasDefaultCellStyle)
+            {
+                AddStyle(band.DefaultCellStyle);
+            }
+
+            if (band.HasHeaderCell)
+            {
+                AddCellStyle(band is DataGridViewRow row ? row.HeaderCell : ((DataGridViewColumn)band).HeaderCell);
+            }
+        }
+
+        void AddRowStyles(DataGridViewRow row)
+        {
+            AddBandStyles(row);
+            foreach (DataGridViewCell cell in row.Cells)
+            {
+                AddCellStyle(cell);
+            }
+        }
+    }
+
     protected override void WndProc(ref Message m)
     {
         switch (m.MsgInternal)
@@ -30176,15 +30276,9 @@ public partial class DataGridView
                     newDeviceDpi = (int)PInvoke.GetDpiForWindow(this);
                 }
 
-                float factor = (float)newDeviceDpi / DeviceDpiInternal;
-                if (ColumnHeadersDefaultCellStyle?.Font is Font columnFont)
+                if (newDeviceDpi != DeviceDpiInternal)
                 {
-                    ColumnHeadersDefaultCellStyle.Font = columnFont.WithSize(columnFont.Size * factor);
-                }
-
-                if (RowHeadersDefaultCellStyle?.Font is Font rowFont)
-                {
-                    RowHeadersDefaultCellStyle.Font = rowFont.WithSize(rowFont.Size * factor);
+                    ScaleCellStyleFonts((float)newDeviceDpi / DeviceDpiInternal);
                 }
 
                 break;

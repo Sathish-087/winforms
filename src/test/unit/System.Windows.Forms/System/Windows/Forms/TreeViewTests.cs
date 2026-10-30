@@ -7653,6 +7653,86 @@ public class TreeViewTests
         Assert.Equal(grandchildFont.Size * newDpi / initialDpi, grandchildNode.NodeFont.Size, 3);
     }
 
+    [WinFormsFact]
+    public void TreeView_WmDpiChangedBeforeParent_ReusesScaledFont()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubTreeView control = new();
+        TreeNode root = control.Nodes.Add("Root");
+        TreeNode child = root.Nodes.Add("Child");
+        root.NodeFont = font;
+        child.NodeFont = font;
+        control.CreateControl();
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+            Assert.NotSame(font, root.NodeFont);
+            Assert.Same(root.NodeFont, child.NodeFont);
+        }
+        finally
+        {
+            if (!ReferenceEquals(root.NodeFont, font))
+            {
+                root.NodeFont.Dispose();
+            }
+
+            if (!ReferenceEquals(child.NodeFont, font) && !ReferenceEquals(child.NodeFont, root.NodeFont))
+            {
+                child.NodeFont.Dispose();
+            }
+        }
+    }
+
+    [WinFormsFact]
+    public void TreeView_WmDpiChangedBeforeParent_DoesNotScaleNodeMovedByCallback()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubTreeView control = new();
+        using TreeView other = new();
+        TreeNode root = control.Nodes.Add("Root");
+        TreeNode moved = root.Nodes.Add("Moved");
+        root.NodeFont = font;
+        moved.NodeFont = font;
+        control.CreateControl();
+        bool movedByCallback = false;
+        control.Invalidated += (sender, e) =>
+        {
+            if (!movedByCallback && !ReferenceEquals(root.NodeFont, font))
+            {
+                movedByCallback = true;
+                moved.Remove();
+                other.Nodes.Add(moved);
+            }
+        };
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+            Assert.True(movedByCallback);
+            Assert.Same(other, moved.TreeView);
+            Assert.Same(font, moved.NodeFont);
+        }
+        finally
+        {
+            if (!ReferenceEquals(root.NodeFont, font))
+            {
+                root.NodeFont.Dispose();
+            }
+
+            if (!ReferenceEquals(moved.NodeFont, font) && !ReferenceEquals(moved.NodeFont, root.NodeFont))
+            {
+                moved.NodeFont.Dispose();
+            }
+        }
+    }
+
     private class SubTreeView : TreeView
     {
         internal int DeviceDpiInternalAccessor => base.DeviceDpiInternal;

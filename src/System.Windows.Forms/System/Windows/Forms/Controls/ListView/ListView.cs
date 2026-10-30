@@ -6982,6 +6982,42 @@ public partial class ListView : Control
         }
     }
 
+    private void ScaleItemFonts(float factor)
+    {
+        Dictionary<ListViewSubItem, Font> fonts = new(ReferenceEqualityComparer.Instance);
+        foreach (ListViewItem item in Items)
+        {
+            foreach (ListViewSubItem subItem in item.SubItems)
+            {
+                if (subItem.CustomStyle && subItem.CustomFont)
+                {
+                    fonts.TryAdd(subItem, subItem.Font);
+                }
+            }
+        }
+
+        Dictionary<Font, Font> scaledFonts = new(ReferenceEqualityComparer.Instance);
+        foreach ((ListViewSubItem subItem, Font font) in fonts)
+        {
+            // Invalidation callbacks can move items or reset a later subitem's style.
+            if (!ReferenceEquals(subItem._owner?.ListView, this)
+                || !subItem.CustomStyle
+                || !subItem.CustomFont
+                || !ReferenceEquals(subItem.Font, font))
+            {
+                continue;
+            }
+
+            if (!scaledFonts.TryGetValue(font, out Font? scaledFont))
+            {
+                scaledFont = font.WithSize(font.Size * factor);
+                scaledFonts.Add(font, scaledFont);
+            }
+
+            subItem.Font = scaledFont;
+        }
+    }
+
     protected override void WndProc(ref Message m)
     {
         switch (m.MsgInternal)
@@ -7013,19 +7049,7 @@ public partial class ListView : Control
 
                     if (!VirtualMode && newDeviceDpi != DeviceDpiInternal)
                     {
-                        float factor = (float)newDeviceDpi / DeviceDpiInternal;
-
-                        foreach (ListViewItem item in Items)
-                        {
-                            foreach (ListViewSubItem subItem in item.SubItems)
-                            {
-                                if (subItem.CustomStyle && subItem.CustomFont)
-                                {
-                                    Font font = subItem.Font;
-                                    subItem.Font = font.WithSize(font.Size * factor);
-                                }
-                            }
-                        }
+                        ScaleItemFonts((float)newDeviceDpi / DeviceDpiInternal);
                     }
 
                     base.WndProc(ref m);
