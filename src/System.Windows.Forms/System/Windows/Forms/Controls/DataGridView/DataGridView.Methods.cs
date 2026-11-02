@@ -30165,22 +30165,44 @@ public partial class DataGridView
             AddRowStyles(_rowTemplate);
         }
 
-        Dictionary<Font, Font> scaledFonts = new(ReferenceEqualityComparer.Instance);
-        foreach ((DataGridViewCellStyle style, Font font) in styles)
+        if (styles.Count == 0)
         {
-            // A preceding style-change callback may have replaced this font.
-            if (!ReferenceEquals(style.Font, font))
-            {
-                continue;
-            }
+            return;
+        }
 
-            if (!scaledFonts.TryGetValue(font, out Font? scaledFont))
+        bool performAutoSize = _noAutoSizeCount == 0;
+        bool stylesChanged = false;
+        _noAutoSizeCount++;
+        try
+        {
+            Dictionary<Font, Font> scaledFonts = new(ReferenceEqualityComparer.Instance);
+            foreach ((DataGridViewCellStyle style, Font font) in styles)
             {
-                scaledFont = font.WithSize(font.Size * factor);
-                scaledFonts.Add(font, scaledFont);
-            }
+                // A preceding style-change callback may have replaced this font.
+                if (!ReferenceEquals(style.Font, font))
+                {
+                    continue;
+                }
 
-            style.Font = scaledFont;
+                if (!scaledFonts.TryGetValue(font, out Font? scaledFont))
+                {
+                    scaledFont = font.WithSize(font.Size * factor);
+                    scaledFonts.Add(font, scaledFont);
+                }
+
+                style.Font = scaledFont;
+                stylesChanged = true;
+            }
+        }
+        finally
+        {
+            Debug.Assert(_noAutoSizeCount > 0);
+            _noAutoSizeCount--;
+        }
+
+        if (performAutoSize && stylesChanged)
+        {
+            OnGlobalAutoSize();
         }
 
         void AddStyle(DataGridViewCellStyle? style)

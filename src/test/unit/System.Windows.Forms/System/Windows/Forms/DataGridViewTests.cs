@@ -3115,6 +3115,37 @@ public partial class DataGridViewTests : IDisposable
         }
     }
 
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_BatchesAutosizeWhileScalingCellFonts()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font smallFont = new(FontFamily.GenericSansSerif, 8);
+        using Font largeFont = new(FontFamily.GenericSansSerif, 40);
+        using SubDataGridView control = new()
+        {
+            AllowUserToAddRows = false,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells
+        };
+        control.Columns.Add("Text", "Text");
+        control.Rows.Add(2);
+        control.Rows[0].Cells[0].Value = "Short";
+        control.Rows[1].Cells[0].Value = "Short";
+        control.Rows[0].Cells[0].Style = new() { Font = smallFont };
+        control.Rows[1].Cells[0].Style = new() { Font = largeFont };
+        control.CreateControl();
+
+        int initialHeight = control.Rows[0].Height;
+        List<int> observedHeights = [];
+        control.CellStyleContentChanged += (sender, e) => observedHeights.Add(control.Rows[0].Height);
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+        Assert.NotEmpty(observedHeights);
+        Assert.All(observedHeights, height => Assert.Equal(initialHeight, height));
+        Assert.True(control.Rows[0].Height > initialHeight);
+    }
+
     private class SubDataGridViewCell : DataGridViewCell
     {
     }
