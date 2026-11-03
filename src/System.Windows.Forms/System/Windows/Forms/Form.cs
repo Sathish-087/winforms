@@ -4232,11 +4232,6 @@ public partial class Form : ContainerControl
     [EditorBrowsable(EditorBrowsableState.Advanced)]
     protected override void OnHandleDestroyed(EventArgs e)
     {
-        if (MdiParent is not null)
-        {
-            s_isRecreatingMdiChild = true;
-        }
-
 #if NET11_0_OR_GREATER
         ClearDeferredAppearanceCloakState();
 #endif

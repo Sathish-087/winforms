@@ -1,6 +1,7 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Drawing;
 using Windows.Win32.UI.HiDpi;
 
 namespace System.Windows.Forms.UITests.Dpi;
@@ -266,6 +267,46 @@ public class FormDpiTests : ControlTestBase
         finally
         {
             // Reset back to original awareness context.
+            PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
+        }
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Form_DpiChanged_ReentrantDpiChange_AllowsSubsequentExplicitFontChange(bool anchorLayoutV2)
+    {
+        // Run tests only on Windows 10 versions that support thread dpi awareness.
+        if (!PlatformDetection.IsWindows10Version1803OrGreater)
+        {
+            return;
+        }
+
+        DPI_AWARENESS_CONTEXT originalAwarenessContext = PInvoke.SetThreadDpiAwarenessContextInternal(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        typeof(ScaleHelper).TestAccessor.Dynamic.InitializeStatics();
+        try
+        {
+            using AnchorLayoutV2Scope scope = new(enable: anchorLayoutV2);
+            using ReentrantDpiForm form = new();
+            form.Show();
+
+            float initialFontSize = form.Font.Size;
+            using Font explicitFont = new(form.Font.FontFamily, initialFontSize);
+            form.Font = explicitFont;
+            form.TriggerNestedDpiChange();
+
+            DpiMessageHelper.TriggerDpiMessage(
+                PInvokeCore.WM_DPICHANGED,
+                form,
+                ScaleHelper.OneHundredPercentLogicalDpi * 3 / 2);
+
+            using Font requestedFont = new(form.Font.FontFamily, initialFontSize * 1.5F);
+            form.Font = requestedFont;
+
+            Assert.Equal(requestedFont.Size, form.Font.Size, precision: 3);
+        }
+        finally
+        {
             PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
         }
     }

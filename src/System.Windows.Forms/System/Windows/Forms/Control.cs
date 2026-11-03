@@ -8014,7 +8014,19 @@ public unsafe partial class Control :
                 SetWindowFont();
             }
 
-            HandleHighDpi();
+            try
+            {
+                HandleHighDpi();
+            }
+            finally
+            {
+                // Parent scaling only replaces the DPI scaling performed during handle initialization,
+                // not a later font change or a HandleCreated event handler.
+                if (this is ContainerControl container)
+                {
+                    container.BoundsScaledByParent = false;
+                }
+            }
 
             // Restore drag drop status. Ole Initialize happens when the ThreadContext in Application is created.
             SetAcceptDrops(AllowDrop);
@@ -10493,20 +10505,23 @@ public unsafe partial class Control :
         {
             Control child = children[i];
 
-            // ContainerControls get their own OnFontChanged Events and scale themselves.
-            // Skip them only if they have a handle and AutoScaleMode is not None,
-            // meaning they will process their own OnFontChanged and scale independently.
-            // A ContainerControl without a handle (e.g. a UserControl on a form being shown
-            // for the first time on a different-DPI monitor) will NOT receive its own
-            // OnFontChanged via RescaleConstantsForDpi, so it must NOT be skipped here —
-            // otherwise its bounds remain stale and DefaultLayout.UpdateAnchorInfo will
-            // record incorrect anchor positions.
-            if (child is ContainerControl containerChild
-               && causedByFontChanged
-               && containerChild.IsHandleCreated
-               && containerChild.AutoScaleMode != AutoScaleMode.None)
+            // During a font-driven parent scale, handleless inherited containers are scaled here.
+            // A handleless Font container whose DPI is stale also needs this path when it is
+            // created on a monitor with a different DPI.
+            if (child is ContainerControl container
+                && causedByFontChanged)
             {
-                continue;
+                bool scaleHandlelessContainer = !container.IsHandleCreated
+                    && (container.AutoScaleMode == AutoScaleMode.Inherit
+                        || (container.AutoScaleMode == AutoScaleMode.Font
+                            && container.DeviceDpiInternal != DeviceDpiInternal));
+
+                if (!scaleHandlelessContainer)
+                {
+                    continue;
+                }
+
+                container.BoundsScaledByParent = true;
             }
 
             // Update window font before scaling, as controls often use font metrics during scaling.

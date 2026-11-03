@@ -43,6 +43,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
     ///  We use this flag to indicate it is top-level window and is already scaled.
     /// </summary>
     private bool _isScaledByDpiChangedEvent;
+    private int _dpiChangeVersion;
 
     private BitVector32 _state;
 
@@ -82,10 +83,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
     /// </summary>
     internal SizeF _currentAutoScaleFactor = new(1F, 1F);
 
-    /// <summary>
-    /// To check if need to scale the MdiChild during after FontChanged.
-    /// </summary>
-    internal static bool s_isRecreatingMdiChild;
+    internal bool BoundsScaledByParent { get; set; }
 
     /// <summary>
     ///  Initializes a new instance of the <see cref="ContainerControl"/> class.
@@ -918,6 +916,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
     /// </summary>
     protected override void OnParentChanged(EventArgs e)
     {
+        BoundsScaledByParent = false;
         _state[s_stateParentChanged] = !RequiredScalingEnabled;
         base.OnParentChanged(e);
     }
@@ -1068,6 +1067,19 @@ public class ContainerControl : ScrollableControl, IContainerControl
     /// </summary>
     internal override void Scale(SizeF includedFactor, SizeF excludedFactor, Control requestingControl, bool causedByFontChanged = false)
     {
+        bool skipScalingByParent = causedByFontChanged
+            && requestingControl == this
+            && GetState(States.CreatingHandle)
+            && BoundsScaledByParent;
+
+        if (AutoScaleMode == AutoScaleMode.Inherit
+            && skipScalingByParent)
+        {
+            // The parent already scaled this container and its children before the handle was created.
+            BoundsScaledByParent = false;
+            return;
+        }
+
         // If we're inheriting our scaling from our parent, Scale is really easy:  just do the
         // base class implementation.
         if (AutoScaleMode == AutoScaleMode.Inherit)
@@ -1109,9 +1121,10 @@ public class ContainerControl : ScrollableControl, IContainerControl
                     ourExternalContainerFactor = SizeF.Empty;
 
                     bool scaleUs = (requestingControl != this || _state[s_stateParentChanged] || causedByFontChanged);
-                    if (scaleUs && IsHandleCreated && s_isRecreatingMdiChild)
+                    if (scaleUs && skipScalingByParent)
                     {
                         scaleUs = false;
+                        BoundsScaledByParent = false;
                     }
 
                     // For design time support:  we may be parented within another form
@@ -1375,9 +1388,9 @@ public class ContainerControl : ScrollableControl, IContainerControl
 
     internal void ScaleContainerForDpi(int deviceDpiNew, int deviceDpiOld, Rectangle suggestedRectangle)
     {
+        int dpiChangeVersion = ++_dpiChangeVersion;
         CommonProperties.xClearAllPreferredSizeCaches(this);
         SuspendAllLayout(this);
-        s_isRecreatingMdiChild = false;
         try
         {
             if (AppContextSwitches.ScaleTopLevelFormMinMaxSizeForDpi)
@@ -1415,15 +1428,18 @@ public class ContainerControl : ScrollableControl, IContainerControl
                     SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
 
-            if (IsFontSet())
+            if (dpiChangeVersion == _dpiChangeVersion)
             {
-                SetScaledFont(fontForDpi);
-            }
-            else
-            {
-                using (new LayoutTransaction(ParentInternal, this, PropertyNames.Font))
+                if (IsFontSet())
                 {
-                    OnFontChanged(EventArgs.Empty);
+                    SetScaledFont(fontForDpi);
+                }
+                else
+                {
+                    using (new LayoutTransaction(ParentInternal, this, PropertyNames.Font))
+                    {
+                        OnFontChanged(EventArgs.Empty);
+                    }
                 }
             }
         }
