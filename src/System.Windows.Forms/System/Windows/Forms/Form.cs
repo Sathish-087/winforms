@@ -2175,13 +2175,26 @@ public partial class Form : ContainerControl
 
         if (!IsMdiChild)
         {
-            bool wasActive = !value && Active;
+            Form? owner = !value && Active ? OwnerInternal : null;
+            HWND activeWindow = owner is not null ? PInvokeCore.GetForegroundWindow() : HWND.Null;
             base.SetVisibleCore(value);
-            if (wasActive
-               && OwnerInternal is Form owner
-               && owner.Visible
-               && owner.IsHandleCreated
-               && !owner.IsDisposed)
+            HWND foregroundWindow = owner is not null ? PInvokeCore.GetForegroundWindow() : HWND.Null;
+            uint foregroundProcessId = 0;
+            if (!foregroundWindow.IsNull)
+            {
+                PInvokeCore.GetWindowThreadProcessId(foregroundWindow, out foregroundProcessId);
+            }
+
+            if (owner is not null
+                && OwnerInternal == owner
+                && !Visible
+                && owner.Visible
+                && owner.IsHandleCreated
+                && !owner.IsDisposed
+                && (foregroundWindow.IsNull
+                    || foregroundWindow == activeWindow
+                    || foregroundWindow == owner.Handle
+                    || foregroundProcessId != PInvoke.GetCurrentProcessId()))
             {
                 owner.Activate();
             }

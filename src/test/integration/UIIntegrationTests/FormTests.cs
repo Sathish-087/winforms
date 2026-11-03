@@ -3,6 +3,7 @@
 
 using System.Drawing;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace System.Windows.Forms.UITests;
 
@@ -165,29 +166,132 @@ public class FormTests : ControlTestBase
     {
         using Form owner = new();
         using Form child = new();
-        using Form popup = new();
 
         owner.Show();
         child.Show(owner);
-        popup.Show(child);
-
-        popup.Hide();
-
-        Assert.Same(child, Form.ActiveForm);
+        ActivateForm(child);
 
         child.Hide();
 
-        Assert.Same(owner, Form.ActiveForm);
+        Assert.Equal((HWND)owner.Handle, PInvokeCore.GetForegroundWindow());
 
         using Form unrelated = new();
         child.Show(owner);
         unrelated.Show();
-        unrelated.Activate();
+        ActivateForm(unrelated);
 
-        Assert.Same(unrelated, Form.ActiveForm);
+        Assert.Equal((HWND)unrelated.Handle, PInvokeCore.GetForegroundWindow());
 
         child.Hide();
 
-        Assert.Same(unrelated, Form.ActiveForm);
+        Assert.Equal((HWND)unrelated.Handle, PInvokeCore.GetForegroundWindow());
+    }
+
+    [WinFormsFact]
+    public void Form_ShowUnownedPopup_DoesNotChangeManagedOwner()
+    {
+        using Form owner = new();
+        using Form child = new();
+        using Form popup = new();
+
+        owner.Show();
+        child.Show(owner);
+        ActivateForm(child);
+
+        popup.Show();
+
+        Assert.Null(popup.Owner);
+        Assert.True(owner.Visible);
+        Assert.True(child.Visible);
+
+        popup.Hide();
+
+        ActivateForm(child);
+        Assert.Equal((HWND)child.Handle, PInvokeCore.GetForegroundWindow());
+
+        child.Hide();
+
+        Assert.Equal((HWND)owner.Handle, PInvokeCore.GetForegroundWindow());
+    }
+
+    [WinFormsFact]
+    public void Form_HideOwnedChild_PreservesActivationChangedDuringVisibleChanged()
+    {
+        using Form owner = new() { TopMost = true };
+        using Form child = new() { TopMost = true };
+        using Form unrelated = new() { TopMost = true };
+        HWND previousForegroundWindow = PInvokeCore.GetForegroundWindow();
+
+        try
+        {
+            owner.Show();
+            child.Show(owner);
+            ActivateForm(child);
+            Assert.True(child.Active);
+
+            unrelated.Show(owner);
+            unrelated.Hide();
+
+            child.VisibleChanged += (_, _) =>
+            {
+                if (!child.Visible)
+                {
+                    unrelated.Show(owner);
+                    Point activationPoint = unrelated.PointToScreen(new Point(unrelated.Width / 2, unrelated.Height / 2));
+                    PInvoke.SetCursorPos(activationPoint.X, activationPoint.Y);
+                    new System.Windows.Forms.UITests.Input.InputSimulator().Mouse.LeftButtonClick();
+                    PInvoke.SetWindowPos(
+                        (HWND)unrelated.Handle,
+                        HWND.HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
+                    PInvoke.SetForegroundWindow((HWND)unrelated.Handle);
+                    PInvoke.SetActiveWindow((HWND)unrelated.Handle);
+                    PInvoke.SetFocus((HWND)unrelated.Handle);
+                    Application.DoEvents();
+                }
+            };
+
+            child.Hide();
+
+            Assert.Equal((HWND)unrelated.Handle, PInvokeCore.GetForegroundWindow());
+        }
+        finally
+        {
+            unrelated.Hide();
+            if (!previousForegroundWindow.IsNull && PInvoke.IsWindow(previousForegroundWindow))
+            {
+                PInvoke.SetForegroundWindow(previousForegroundWindow);
+            }
+        }
+    }
+
+    private static void ActivateForm(Form form)
+    {
+        PInvoke.SetWindowPos(
+            (HWND)form.Handle,
+            HWND.HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
+        PInvoke.SetForegroundWindow((HWND)form.Handle);
+        PInvoke.SetActiveWindow((HWND)form.Handle);
+        PInvoke.SetFocus((HWND)form.Handle);
+        Point activationPoint = form.PointToScreen(new Point(form.Width / 2, form.Height / 2));
+        PInvoke.SetCursorPos(activationPoint.X, activationPoint.Y);
+        new System.Windows.Forms.UITests.Input.InputSimulator().Mouse.LeftButtonClick();
+        PInvoke.SetWindowPos(
+            (HWND)form.Handle,
+            HWND.HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
     }
 }
