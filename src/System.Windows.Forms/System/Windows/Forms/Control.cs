@@ -10493,12 +10493,14 @@ public unsafe partial class Control :
         {
             Control child = children[i];
 
-            // ContainerControls with a handle self-scale from OnFontChanged. Skipping them here
-            // avoids double-scaling. Uncreated containers (for example SplitContainer on a hidden
-            // TabPage) skip PerformAutoScale in OnFontChanged, so the parent must scale them.
-            if (child is ContainerControl { IsHandleCreated: true } && causedByFontChanged)
+            if (child is ContainerControl container
+                && causedByFontChanged)
             {
-                continue;
+                bool scaleHandlelessContainer = !container.IsHandleCreated && (container.AutoScaleMode == AutoScaleMode.Inherit);
+                if (!scaleHandlelessContainer)
+                {
+                    continue;
+                }
             }
 
             // Update window font before scaling, as controls often use font metrics during scaling.

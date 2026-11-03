@@ -2149,8 +2149,25 @@ public class TabControlTests
         Assert.Equal(0, createdCallCount);
     }
 
-    [WinFormsFact]
-    public void TabControl_FontChangeOnHiddenTabPage_ScalesNestedSplitContainerControls()
+    [WinFormsTheory]
+    [InlineData(AutoScaleMode.Inherit, false, false)]
+    [InlineData(AutoScaleMode.Inherit, false, true)]
+    [InlineData(AutoScaleMode.Inherit, true, false)]
+    [InlineData(AutoScaleMode.Inherit, true, true)]
+    [InlineData(AutoScaleMode.None, false, false)]
+    [InlineData(AutoScaleMode.None, false, true)]
+    [InlineData(AutoScaleMode.None, true, false)]
+    [InlineData(AutoScaleMode.None, true, true)]
+    [InlineData(AutoScaleMode.Dpi, false, false)]
+    [InlineData(AutoScaleMode.Dpi, false, true)]
+    [InlineData(AutoScaleMode.Dpi, true, false)]
+    [InlineData(AutoScaleMode.Dpi, true, true)]
+    [InlineData(AutoScaleMode.Font, false, false)]
+    [InlineData(AutoScaleMode.Font, false, true)]
+    [InlineData(AutoScaleMode.Font, true, false)]
+    [InlineData(AutoScaleMode.Font, true, true)]
+    public void TabControl_FontChangeOnHiddenTabPage_PreservesNestedContainerScaling(
+        AutoScaleMode autoScaleMode, bool useSplitContainer, bool createHandle)
     {
         using Form form = new()
         {
@@ -2167,47 +2184,93 @@ public class TabControlTests
             Location = new Point(100, 60),
             Size = new Size(90, 30)
         };
-        using SplitContainer splitContainer = new()
+        using ContainerControl container = useSplitContainer ? new SplitContainer() : new UserControl();
+        container.AutoScaleMode = autoScaleMode;
+        container.Bounds = new Rectangle(10, 10, 220, 60);
+        if (container is SplitContainer splitContainer)
         {
-            Location = new Point(10, 10),
-            Size = new Size(220, 60),
-            SplitterDistance = 70
-        };
+            splitContainer.SplitterDistance = 70;
+        }
+
         using Button splitPanelButton = new()
         {
             Location = new Point(20, 10),
             Size = new Size(90, 30)
         };
 
-        splitContainer.Panel2.Controls.Add(splitPanelButton);
+        Control panel = container is SplitContainer split ? split.Panel2 : container;
+        panel.Controls.Add(splitPanelButton);
         secondPage.Controls.Add(secondPageButton);
-        secondPage.Controls.Add(splitContainer);
+        secondPage.Controls.Add(container);
         tabControl.TabPages.Add(firstPage);
         tabControl.TabPages.Add(secondPage);
         form.Controls.Add(tabControl);
         form.Show();
+        if (createHandle)
+        {
+            tabControl.SelectedIndex = 1;
+            tabControl.SelectedIndex = 0;
+        }
 
         Assert.Equal(0, tabControl.SelectedIndex);
-        Assert.False(splitContainer.IsHandleCreated);
-        Assert.False(splitPanelButton.IsHandleCreated);
+        Assert.Equal(createHandle, container.IsHandleCreated);
+        Assert.Equal(createHandle, splitPanelButton.IsHandleCreated);
 
         Rectangle initialSecondPageButtonBounds = secondPageButton.Bounds;
-        Rectangle initialSplitContainerBounds = splitContainer.Bounds;
+        Rectangle initialContainerBounds = container.Bounds;
         Rectangle initialSplitPanelButtonBounds = splitPanelButton.Bounds;
+        SizeF initialDimensions = form.CurrentAutoScaleDimensions;
+        Font originalFont = form.Font;
+        using Font enlargedFont = new(originalFont.FontFamily, originalFont.Size * 2F);
 
-        form.Font = new Font(form.Font.FontFamily, form.Font.Size * 2F);
+        form.Font = enlargedFont;
 
-        Rectangle splitContainerBoundsAfterFontChange = splitContainer.Bounds;
+        Rectangle containerBoundsAfterFontChange = container.Bounds;
         Rectangle splitPanelButtonBoundsAfterFontChange = splitPanelButton.Bounds;
-        Assert.NotEqual(initialSecondPageButtonBounds, secondPageButton.Bounds);
-        Assert.NotEqual(initialSplitContainerBounds, splitContainerBoundsAfterFontChange);
-        Assert.NotEqual(initialSplitPanelButtonBounds, splitPanelButtonBoundsAfterFontChange);
+        SizeF changedDimensions = form.CurrentAutoScaleDimensions;
+        bool shouldScale = autoScaleMode == AutoScaleMode.Inherit
+            || (autoScaleMode == AutoScaleMode.Font && createHandle);
+        Assert.Equal(
+            ScaleBounds(initialSecondPageButtonBounds, initialDimensions, changedDimensions),
+            secondPageButton.Bounds);
+        Assert.Equal(
+            shouldScale
+                ? ScaleBounds(initialContainerBounds, initialDimensions, changedDimensions)
+                : initialContainerBounds,
+            containerBoundsAfterFontChange);
+        Assert.Equal(
+            shouldScale
+                ? ScaleBounds(initialSplitPanelButtonBounds, initialDimensions, changedDimensions)
+                : initialSplitPanelButtonBounds,
+            splitPanelButtonBoundsAfterFontChange);
+        Assert.Equal(createHandle, container.IsHandleCreated);
+        Assert.Equal(createHandle, splitPanelButton.IsHandleCreated);
 
         tabControl.SelectedIndex = 1;
-        Assert.True(splitContainer.IsHandleCreated);
+        Assert.True(container.IsHandleCreated);
         Assert.True(splitPanelButton.IsHandleCreated);
-        Assert.Equal(splitContainerBoundsAfterFontChange, splitContainer.Bounds);
+        Assert.Equal(containerBoundsAfterFontChange, container.Bounds);
         Assert.Equal(splitPanelButtonBoundsAfterFontChange, splitPanelButton.Bounds);
+
+        tabControl.SelectedIndex = 0;
+        form.Font = originalFont;
+        Assert.Equal(
+            shouldScale
+                ? ScaleBounds(containerBoundsAfterFontChange, changedDimensions, initialDimensions)
+                : initialContainerBounds,
+            container.Bounds);
+        Assert.Equal(
+            shouldScale
+                ? ScaleBounds(splitPanelButtonBoundsAfterFontChange, changedDimensions, initialDimensions)
+                : initialSplitPanelButtonBounds,
+            splitPanelButton.Bounds);
+
+        static Rectangle ScaleBounds(Rectangle bounds, SizeF before, SizeF after)
+            => new(
+                (int)Math.Round(bounds.X * after.Width / before.Width),
+                (int)Math.Round(bounds.Y * after.Height / before.Height),
+                (int)Math.Round(bounds.Width * after.Width / before.Width),
+                (int)Math.Round(bounds.Height * after.Height / before.Height));
     }
 
     [WinFormsFact]
