@@ -6,6 +6,7 @@
 using System.ComponentModel;
 using System.Drawing;
 using System.Globalization;
+using System.Reflection;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
 
@@ -1054,6 +1055,29 @@ public class DateTimePickerTests : IDisposable
                 }
             }
         }
+    }
+
+    [WinFormsFact]
+    public void DateTimePicker_WmDpiChangedBeforeParent_DisposesReplacedCalendarFontHandle()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font font = new(FontFamily.GenericSansSerif, 17);
+        using SubDateTimePicker control = new() { CalendarFont = font };
+        control.CreateControl();
+
+        FieldInfo wrapperField = typeof(DateTimePicker).GetField(
+            "_calendarFontHandleWrapper",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Control.FontHandleWrapper oldWrapper = Assert.IsType<Control.FontHandleWrapper>(wrapperField.GetValue(control));
+        FieldInfo handleField = typeof(Control.FontHandleWrapper).GetField(
+            "_handle",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        int oldDpi = control.DeviceDpiInternal;
+
+        control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+        HFONT disposedHandle = (HFONT)handleField.GetValue(oldWrapper)!;
+        Assert.True(disposedHandle.IsNull);
     }
 
     public class SubDateTimePicker : DateTimePicker

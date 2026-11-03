@@ -210,8 +210,10 @@ public partial class DateTimePicker : Control
             if ((value is null && _calendarFont is not null) || (value is not null && !value.Equals(_calendarFont)))
             {
                 _calendarFont = value;
+                FontHandleWrapper? oldCalendarFontHandleWrapper = _calendarFontHandleWrapper;
                 _calendarFontHandleWrapper = null;
                 SetControlCalendarFont();
+                oldCalendarFontHandleWrapper?.Dispose();
             }
         }
     }
@@ -1180,8 +1182,10 @@ public partial class DateTimePicker : Control
 
         if (_calendarFont is null)
         {
+            FontHandleWrapper? oldCalendarFontHandleWrapper = _calendarFontHandleWrapper;
             _calendarFontHandleWrapper = null;
             SetControlCalendarFont();
+            oldCalendarFontHandleWrapper?.Dispose();
         }
     }
 

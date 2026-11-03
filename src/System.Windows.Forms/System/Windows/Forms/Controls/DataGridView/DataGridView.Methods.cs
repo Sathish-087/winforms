@@ -12960,7 +12960,10 @@ public partial class DataGridView
             if (e.ChangeAffectsPreferredSize)
             {
                 repositionEditingControl = true;
-                OnGlobalAutoSize();
+                if (_noAutoSizeCount == 0)
+                {
+                    OnGlobalAutoSize();
+                }
             }
             else
             {
@@ -12973,7 +12976,10 @@ public partial class DataGridView
             if (e.ChangeAffectsPreferredSize)
             {
                 repositionEditingControl = true;
-                OnColumnsGlobalAutoSize();
+                if (_noAutoSizeCount == 0)
+                {
+                    OnColumnsGlobalAutoSize();
+                }
             }
             else
             {
@@ -12988,22 +12994,25 @@ public partial class DataGridView
             if (e.ChangeAffectsPreferredSize)
             {
                 repositionEditingControl = true;
-                // Autosize rows if needed
-                if ((((DataGridViewAutoSizeRowsModeInternal)_autoSizeRowsMode) & DataGridViewAutoSizeRowsModeInternal.AllColumns) != 0)
+                if (_noAutoSizeCount == 0)
                 {
-                    AdjustShrinkingRows(_autoSizeRowsMode, fixedWidth: false, internalAutosizing: true);
-                }
+                    // Autosize rows if needed
+                    if ((((DataGridViewAutoSizeRowsModeInternal)_autoSizeRowsMode) & DataGridViewAutoSizeRowsModeInternal.AllColumns) != 0)
+                    {
+                        AdjustShrinkingRows(_autoSizeRowsMode, fixedWidth: false, internalAutosizing: true);
+                    }
 
-                // Auto size columns also if needed
-                // Impossible to figure out if DisplayedRows filter should be added or not. Adding it to be on the conservative side.
-                AutoResizeAllVisibleColumnsInternal(
-                    DataGridViewAutoSizeColumnCriteriaInternal.AllRows | DataGridViewAutoSizeColumnCriteriaInternal.DisplayedRows,
-                    fixedHeight: true);
+                    // Auto size columns also if needed
+                    // Impossible to figure out if DisplayedRows filter should be added or not. Adding it to be on the conservative side.
+                    AutoResizeAllVisibleColumnsInternal(
+                        DataGridViewAutoSizeColumnCriteriaInternal.AllRows | DataGridViewAutoSizeColumnCriteriaInternal.DisplayedRows,
+                        fixedHeight: true);
 
-                // Second round of rows autosizing
-                if ((((DataGridViewAutoSizeRowsModeInternal)_autoSizeRowsMode) & DataGridViewAutoSizeRowsModeInternal.AllColumns) != 0)
-                {
-                    AdjustShrinkingRows(_autoSizeRowsMode, fixedWidth: true, internalAutosizing: true);
+                    // Second round of rows autosizing
+                    if ((((DataGridViewAutoSizeRowsModeInternal)_autoSizeRowsMode) & DataGridViewAutoSizeRowsModeInternal.AllColumns) != 0)
+                    {
+                        AdjustShrinkingRows(_autoSizeRowsMode, fixedWidth: true, internalAutosizing: true);
+                    }
                 }
             }
         }
@@ -13068,7 +13077,7 @@ public partial class DataGridView
             OnAlternatingRowsDefaultCellStyleChanged(CellStyleChangedEventArgs);
         }
 
-        if (repositionEditingControl && EditingControl is not null)
+        if (repositionEditingControl && EditingControl is not null && _noAutoSizeCount == 0)
         {
             PositionEditingControl(setLocation: true, setSize: true, setFocus: false);
         }
@@ -30203,6 +30212,11 @@ public partial class DataGridView
         if (performAutoSize && stylesChanged)
         {
             OnGlobalAutoSize();
+
+            if (EditingControl is not null)
+            {
+                PositionEditingControl(setLocation: true, setSize: true, setFocus: false);
+            }
         }
 
         void AddStyle(DataGridViewCellStyle? style)

@@ -3146,8 +3146,106 @@ public partial class DataGridViewTests : IDisposable
         Assert.True(control.Rows[0].Height > initialHeight);
     }
 
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_BatchesAutosizeWhileScalingRowFonts()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font smallFont = new(FontFamily.GenericSansSerif, 8);
+        using Font largeFont = new(FontFamily.GenericSansSerif, 40);
+        using SubDataGridView control = new()
+        {
+            AllowUserToAddRows = false,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells
+        };
+        control.Columns.Add("Text", "Text");
+        control.Rows.Add(2);
+        control.Rows[0].Cells[0].Value = "Short";
+        control.Rows[1].Cells[0].Value = "Short";
+        control.Rows[0].DefaultCellStyle = new() { Font = smallFont };
+        control.Rows[1].DefaultCellStyle = new() { Font = largeFont };
+        control.CreateControl();
+
+        int initialHeight = control.Rows[0].Height;
+        List<int> observedHeights = [];
+        control.CellStyleContentChanged += (sender, e) => observedHeights.Add(control.Rows[0].Height);
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+        Assert.NotEmpty(observedHeights);
+        Assert.All(observedHeights, height => Assert.Equal(initialHeight, height));
+        Assert.True(control.Rows[0].Height > initialHeight);
+    }
+
+    [WinFormsFact]
+    public void DataGridView_WmDpiChangedBeforeParent_RepositionsEditingControlAfterScalingRowFont()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using Font rowFont = new(FontFamily.GenericSansSerif, 17);
+        using SubDataGridView control = new()
+        {
+            AllowUserToAddRows = false,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells
+        };
+        control.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            CellTemplate = new TrackingDataGridViewTextBoxCell()
+        });
+        control.Rows.Add();
+        control.Rows[0].Cells[0].Value = "Text";
+        control.Rows[0].DefaultCellStyle = new() { Font = rowFont };
+        control.CreateControl();
+        control.CurrentCell = control.Rows[0].Cells[0];
+        control.BeginEdit(selectAll: false);
+
+        TrackingDataGridViewTextBoxCell cell = Assert.IsType<TrackingDataGridViewTextBoxCell>(control.Rows[0].Cells[0]);
+        int positionCallCount = cell.PositionEditingControlCallCount;
+        int oldDpi = control.DeviceDpiInternalAccessor;
+
+        try
+        {
+            control.InvokeDpiChangedBeforeParent(oldDpi == 96 ? 144 : 96);
+
+            Assert.True(cell.PositionEditingControlCallCount > positionCallCount);
+        }
+        finally
+        {
+            control.CancelEdit();
+            control.CurrentCell = null;
+        }
+    }
+
     private class SubDataGridViewCell : DataGridViewCell
     {
+    }
+
+    private class TrackingDataGridViewTextBoxCell : DataGridViewTextBoxCell
+    {
+        internal int PositionEditingControlCallCount { get; private set; }
+
+        public override void PositionEditingControl(
+            bool setLocation,
+            bool setSize,
+            Rectangle cellBounds,
+            Rectangle cellClip,
+            DataGridViewCellStyle cellStyle,
+            bool singleVerticalBorderAdded,
+            bool singleHorizontalBorderAdded,
+            bool isFirstDisplayedColumn,
+            bool isFirstDisplayedRow)
+        {
+            PositionEditingControlCallCount++;
+            base.PositionEditingControl(
+                setLocation,
+                setSize,
+                cellBounds,
+                cellClip,
+                cellStyle,
+                singleVerticalBorderAdded,
+                singleHorizontalBorderAdded,
+                isFirstDisplayedColumn,
+                isFirstDisplayedRow);
+        }
     }
 
     private class SubDataGridView : DataGridView
