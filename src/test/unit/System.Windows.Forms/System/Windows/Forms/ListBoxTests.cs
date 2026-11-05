@@ -1873,6 +1873,142 @@ public class ListBoxTests
         Assert.InRange(itemCountAfterFontChange, 1, expectedItemCount - 1);
     }
 
+    [WinFormsFact]
+    public void ListBox_ScaleControl_ScaleDown_DoesNotRestorePreviousIntegralHeight()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 200)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        int originalHeight = control.Height;
+
+        control.ScaleControl(new SizeF(0.5F, 0.5F), BoundsSpecified.All);
+
+        Assert.InRange(control.Height, 1, originalHeight - 1);
+    }
+
+    [WinFormsFact]
+    public void ListBox_ScaleControl_ResizeBeforeFontChanged_DoesNotRestoreStaleIntegralHeight()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 94)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        int expectedItemCount = control.ClientSize.Height / control.ItemHeight;
+
+        control.ScaleControl(new SizeF(3F, 3F), BoundsSpecified.All);
+        control.Height = control.ItemHeight * 2 + (control.Height - control.ClientSize.Height);
+        int resizedItemCount = control.ClientSize.Height / control.ItemHeight;
+
+        using Font scaledFont = new(control.Font.FontFamily, control.Font.Size * 3F, control.Font.Style);
+        control.Font = scaledFont;
+
+        int itemCountAfterFontChange = control.ClientSize.Height / control.ItemHeight;
+        Assert.InRange(resizedItemCount, 1, expectedItemCount - 1);
+        Assert.InRange(itemCountAfterFontChange, 1, expectedItemCount - 1);
+    }
+
+    [WinFormsFact]
+    public void ListBox_ScaleControl_ExcludedPass_PreservesIntegralHeightItemCount()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 94)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        int expectedItemCount = control.ClientSize.Height / control.ItemHeight;
+
+        control.RequiredScaling = BoundsSpecified.Height;
+        control.Scale(new SizeF(3F, 3F), new SizeF(3F, 3F), control);
+
+        using Font scaledFont = new(control.Font.FontFamily, control.Font.Size * 3F, control.Font.Style);
+        control.Font = scaledFont;
+
+        Assert.Equal(expectedItemCount, control.ClientSize.Height / control.ItemHeight);
+    }
+
+    [WinFormsFact]
+    public void ListBox_ScaleControl_FontChangedHandlerResize_DoesNotRestoreIntegralHeightItemCount()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 94)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        int expectedItemCount = control.ClientSize.Height / control.ItemHeight;
+        control.ScaleControl(new SizeF(3F, 3F), BoundsSpecified.All);
+        control.FontChanged += (_, _) => control.Height = control.ItemHeight * 2 + (control.Height - control.ClientSize.Height);
+
+        using Font scaledFont = new(control.Font.FontFamily, control.Font.Size * 3F, control.Font.Style);
+        control.Font = scaledFont;
+
+        int itemCountAfterFontChange = control.ClientSize.Height / control.ItemHeight;
+        Assert.InRange(itemCountAfterFontChange, 1, expectedItemCount - 1);
+    }
+
+    [WinFormsFact]
+    public void ListBox_ScaleControl_IntegralHeightDisabledBeforeFontChanged_DoesNotAdjustHeight()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 94)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        control.ScaleControl(new SizeF(3F, 3F), BoundsSpecified.All);
+        int expectedHeight = control.Height;
+        control.IntegralHeight = false;
+
+        using Font scaledFont = new(control.Font.FontFamily, control.Font.Size * 3F, control.Font.Style);
+        control.Font = scaledFont;
+
+        Assert.Equal(expectedHeight, control.Height);
+    }
+
+    [WinFormsFact]
+    public void ListBox_ScaleControl_ThrowingFontChangedHandler_ClearsIntegralHeightItemCount()
+    {
+        using IDisposable dpiScope = ScaleHelper.EnterDpiAwarenessScope(DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        using SubListBox control = new()
+        {
+            Size = new Size(120, 94)
+        };
+        control.Items.AddRange(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+        Assert.NotEqual(IntPtr.Zero, control.Handle);
+        int expectedItemCount = control.ClientSize.Height / control.ItemHeight;
+        control.ScaleControl(new SizeF(3F, 3F), BoundsSpecified.All);
+        EventHandler throwingHandler = (_, _) => throw new InvalidOperationException();
+        control.FontChanged += throwingHandler;
+
+        using Font scaledFont = new(control.Font.FontFamily, control.Font.Size * 3F, control.Font.Style);
+        Assert.Throws<InvalidOperationException>(() => control.Font = scaledFont);
+
+        control.FontChanged -= throwingHandler;
+
+        using Font nextFont = new(control.Font.FontFamily, control.Font.Size + 1, control.Font.Style);
+        control.Font = nextFont;
+
+        int itemCountAfterFontChange = control.ClientSize.Height / control.ItemHeight;
+        Assert.InRange(itemCountAfterFontChange, 1, expectedItemCount - 1);
+    }
+
     public static IEnumerable<object[]> Items_CustomCreateItemCollection_TestData()
     {
         yield return new object[] { null };

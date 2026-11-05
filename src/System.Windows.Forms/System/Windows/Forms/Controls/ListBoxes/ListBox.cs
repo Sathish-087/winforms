@@ -48,6 +48,7 @@ public partial class ListBox : ListControl
     private static int s_defaultListBoxItemHeight = -1;
     private int _requestedHeight;
     private int _integralHeightItemCountBeforeDpiScaling;
+    private bool _isScalingControl;
     private int _topIndex;
     private int _horizontalExtent;
     private int _maxWidth = -1;
@@ -1824,21 +1825,26 @@ public partial class ListBox : ListControl
 
     protected override void OnFontChanged(EventArgs e)
     {
-        int integralHeightItemCount = _integralHeightItemCountBeforeDpiScaling;
-        if (integralHeightItemCount == 0 && ScaledControlFont is not null)
+        try
         {
-            integralHeightItemCount = GetIntegralHeightItemCount();
+            if (_integralHeightItemCountBeforeDpiScaling == 0 && ScaledControlFont is not null)
+            {
+                _integralHeightItemCountBeforeDpiScaling = GetIntegralHeightItemCount();
+            }
+
+            base.OnFontChanged(e);
+
+            // Changing the font causes us to resize, always rounding down.
+            // Make sure we do this after base.OnPropertyChanged, which sends the WM_SETFONT message
+
+            // Avoid the listBox and textbox behavior in Collection editors
+            UpdateFontCache();
+            AdjustIntegralHeightFromItemCount(_integralHeightItemCountBeforeDpiScaling);
         }
-
-        base.OnFontChanged(e);
-
-        // Changing the font causes us to resize, always rounding down.
-        // Make sure we do this after base.OnPropertyChanged, which sends the WM_SETFONT message
-
-        // Avoid the listBox and textbox behavior in Collection editors
-        UpdateFontCache();
-        AdjustIntegralHeightFromItemCount(integralHeightItemCount);
-        _integralHeightItemCountBeforeDpiScaling = 0;
+        finally
+        {
+            _integralHeightItemCountBeforeDpiScaling = 0;
+        }
     }
 
     /// <summary>
@@ -2078,20 +2084,38 @@ public partial class ListBox : ListControl
     protected override void ScaleControl(SizeF factor, BoundsSpecified specified)
     {
         int integralHeightItemCount = 0;
-        if (factor.Height != 1F && (specified & BoundsSpecified.Height) != BoundsSpecified.None)
+        if (factor.Height > 1F && (specified & BoundsSpecified.Height) != BoundsSpecified.None)
         {
             integralHeightItemCount = GetIntegralHeightItemCount();
+            _integralHeightItemCountBeforeDpiScaling = integralHeightItemCount;
         }
-
-        _integralHeightItemCountBeforeDpiScaling = integralHeightItemCount;
-
-        if (factor.Width != 1F && factor.Height != 1F)
+        else if (!ScalingInProgress)
         {
-            UpdateFontCache();
+            _integralHeightItemCountBeforeDpiScaling = 0;
         }
 
-        base.ScaleControl(factor, specified);
-        AdjustIntegralHeightFromItemCount(integralHeightItemCount);
+        bool isScalingControl = _isScalingControl;
+        _isScalingControl = true;
+
+        try
+        {
+            if (factor.Width != 1F && factor.Height != 1F)
+            {
+                UpdateFontCache();
+            }
+
+            base.ScaleControl(factor, specified);
+            AdjustIntegralHeightFromItemCount(integralHeightItemCount);
+        }
+        catch
+        {
+            _integralHeightItemCountBeforeDpiScaling = 0;
+            throw;
+        }
+        finally
+        {
+            _isScalingControl = isScalingControl;
+        }
     }
 
     private int GetIntegralHeightItemCount()
@@ -2107,7 +2131,7 @@ public partial class ListBox : ListControl
 
     private void AdjustIntegralHeightFromItemCount(int itemCount)
     {
-        if (itemCount <= 0 || !IsHandleCreated)
+        if (itemCount <= 0 || !IsHandleCreated || !_integralHeight || _drawMode != DrawMode.Normal)
         {
             return;
         }
@@ -2138,6 +2162,10 @@ public partial class ListBox : ListControl
         if (!_integralHeightAdjust && height != Height)
         {
             _requestedHeight = height;
+            if (!_isScalingControl)
+            {
+                _integralHeightItemCountBeforeDpiScaling = 0;
+            }
         }
 
         base.SetBoundsCore(x, y, width, height, specified);
