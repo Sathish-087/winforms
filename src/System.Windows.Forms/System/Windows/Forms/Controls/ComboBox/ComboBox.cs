@@ -2783,8 +2783,9 @@ public partial class ComboBox : ListControl
         }
 
         // During remove/add reparenting the HWND can still be parked here.
-        // Recreate only when the native parent does not yet match the managed parent.
-        if (PInvoke.GetParent(this) == ParentInternal.HWNDInternal)
+        // Recreate only when the control's managed DPI differs from its destination parent.
+        if (DeviceDpi == ParentInternal.DeviceDpi
+            && (DropDownStyle == ComboBoxStyle.Simple || Height == PreferredHeight))
         {
             return;
         }
