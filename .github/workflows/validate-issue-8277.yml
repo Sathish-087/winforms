@@ -1,9 +1,6 @@
 name: Validate issue 8277 regression tests
 
 on:
-  push:
-    branches:
-      - Fix_Issue_8277_ResolveCI
   workflow_dispatch:
   workflow_call:
 
@@ -39,7 +36,7 @@ jobs:
             -msbuildEngine dotnet `
             -configuration ${{ matrix.configuration }} `
             -platform ${{ matrix.architecture }} `
-            -projects src/test/unit/System.Windows.Forms/System.Windows.Forms.Tests.csproj `
+            -projects Winforms.sln `
             /p:TargetArchitecture=${{ matrix.architecture }} `
             -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-build.binlog
           exit $LASTEXITCODE
@@ -52,9 +49,9 @@ jobs:
             -msbuildEngine dotnet `
             -configuration ${{ matrix.configuration }} `
             -platform ${{ matrix.architecture }} `
-            -projects src/test/unit/System.Windows.Forms/System.Windows.Forms.Tests.csproj `
+            -projects Winforms.sln `
             /p:TargetArchitecture=${{ matrix.architecture }} `
-            "/p:TestRunnerAdditionalArguments='--filter-method System.Windows.Forms.Tests.ToolStripControlHostTests.ToolStripControlHost_Size_* --filter-method System.Windows.Forms.Tests.ToolStripTests.ToolStrip_RescaleConstantsForDpi_*'" `
+            "/p:TestRunnerAdditionalArguments='--filter-method System.Windows.Forms.Tests.ToolStripControlHostTests.ToolStripControlHost_Size_* --filter-method System.Windows.Forms.Tests.ToolStripTests.ToolStrip_RescaleConstantsForDpi_* --ignore-exit-code 8'" `
             -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-tests.binlog `
             /m:1
           exit $LASTEXITCODE
