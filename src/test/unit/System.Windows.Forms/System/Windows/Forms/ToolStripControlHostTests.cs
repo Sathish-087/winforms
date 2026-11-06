@@ -2267,10 +2267,11 @@ public class ToolStripControlHostTests
         using ToolStripControlHost item = new(control);
         Size size = item.Size;
         CommonProperties.xSetPreferredSizeCache(control, new Size(75, control.Height));
-        Assert.Equal(75, item.GetPreferredSize(Size.Empty).Width);
+        Assert.Equal(75, CommonProperties.xGetPreferredSizeCache(control).Width);
 
         item.Size = size;
 
+        Assert.Equal(Size.Empty, CommonProperties.xGetPreferredSizeCache(control));
         Assert.Equal(size, item.Size);
         Assert.Equal(width, item.GetPreferredSize(Size.Empty).Width);
         Assert.Equal(width, control.GetPreferredSize(Size.Empty).Width);
