@@ -1,5 +1,6 @@
 name: Backport PR to branch
 on:
+  workflow_dispatch:
   issue_comment:
     types: [created]
   schedule:
@@ -13,6 +14,12 @@ permissions:
   actions: write
 
 jobs:
+  validate-issue-8277:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'Sathish-087/winforms' && github.ref == 'refs/heads/Fix_Issue_8277_ResolveCI'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/validate-issue-8277.yml
+
   backport:
     if: ${{ contains(github.event.comment.body, '/backport to') || github.event_name == 'schedule' }}
     uses: dotnet/arcade/.github/workflows/backport-base.yml@main
