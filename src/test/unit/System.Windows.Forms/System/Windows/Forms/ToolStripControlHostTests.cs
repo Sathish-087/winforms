@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.ComponentModel.Design;
 using System.Drawing;
 using System.Reflection;
+using System.Windows.Forms.Layout;
 using System.Windows.Forms.TestUtilities;
 using Moq;
 using Size = System.Drawing.Size;
@@ -2255,6 +2256,25 @@ public class ToolStripControlHostTests
         Assert.Equal(value, item.Size);
         Assert.Equal(new Rectangle(1, 2, value.Width, value.Height), c.Bounds);
         Assert.Equal(0, locationChangedCallCount);
+    }
+
+    [WinFormsTheory]
+    [InlineData(192)]
+    [InlineData(240)]
+    public void ToolStripControlHost_Size_SetSameValue_InvalidatesHostedPreferredSizeCache(int width)
+    {
+        using ComboBox control = new() { Width = width };
+        using ToolStripControlHost item = new(control);
+        Size size = item.Size;
+        CommonProperties.xSetPreferredSizeCache(control, new Size(75, control.Height));
+        Assert.Equal(75, item.GetPreferredSize(Size.Empty).Width);
+
+        item.Size = size;
+
+        Assert.Equal(size, item.Size);
+        Assert.Equal(width, item.GetPreferredSize(Size.Empty).Width);
+        Assert.Equal(width, control.GetPreferredSize(Size.Empty).Width);
+        Assert.False(control.IsHandleCreated);
     }
 
     [WinFormsTheory]
