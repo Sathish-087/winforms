@@ -48,10 +48,10 @@ jobs:
             -test `
             -msbuildEngine dotnet `
             -configuration ${{ matrix.configuration }} `
-            -platform ${{ matrix.architecture }} `
-            -projects Winforms.sln `
+            -platform AnyCPU `
+            -projects src/test/unit/System.Windows.Forms/System.Windows.Forms.Tests.csproj `
             /p:TargetArchitecture=${{ matrix.architecture }} `
-            "/p:TestRunnerAdditionalArguments='--filter-method System.Windows.Forms.Tests.ToolStripControlHostTests.ToolStripControlHost_Size_* --filter-method System.Windows.Forms.Tests.ToolStripTests.ToolStrip_RescaleConstantsForDpi_* --ignore-exit-code 8'" `
+            "/p:TestRunnerAdditionalArguments=--filter-method System.Windows.Forms.Tests.ToolStripControlHostTests.ToolStripControlHost_Size_* --filter-method System.Windows.Forms.Tests.ToolStripTests.ToolStrip_RescaleConstantsForDpi_* --minimum-expected-tests 6 --show-test-results all" `
             -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-tests.binlog `
             /m:1
           exit $LASTEXITCODE
