@@ -1,0 +1,69 @@
+name: Validate issue 8277 regression tests
+
+on:
+  push:
+    branches:
+      - Fix_Issue_8277_ResolveCI
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression-tests:
+    if: github.repository == 'Sathish-087/winforms'
+    name: Windows ${{ matrix.architecture }} ${{ matrix.configuration }}
+    runs-on: windows-2025
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x64, x86]
+        configuration: [Debug, Release]
+    defaults:
+      run:
+        shell: powershell
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Windows Forms regression tests
+        run: |
+          & .\eng\common\build.ps1 `
+            -nativeToolsOnMachine `
+            -restore `
+            -build `
+            -msbuildEngine dotnet `
+            -configuration ${{ matrix.configuration }} `
+            -platform ${{ matrix.architecture }} `
+            -projects src/test/unit/System.Windows.Forms/System.Windows.Forms.Tests.csproj `
+            /p:TargetArchitecture=${{ matrix.architecture }} `
+            -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-build.binlog
+          exit $LASTEXITCODE
+
+      - name: Run hosted-control sizing and DPI regression tests
+        run: |
+          & .\eng\common\build.ps1 `
+            -nativeToolsOnMachine `
+            -test `
+            -msbuildEngine dotnet `
+            -configuration ${{ matrix.configuration }} `
+            -platform ${{ matrix.architecture }} `
+            -projects src/test/unit/System.Windows.Forms/System.Windows.Forms.Tests.csproj `
+            /p:TargetArchitecture=${{ matrix.architecture }} `
+            "/p:TestRunnerAdditionalArguments='--filter-method System.Windows.Forms.Tests.ToolStripControlHostTests.ToolStripControlHost_Size_* --filter-method System.Windows.Forms.Tests.ToolStripTests.ToolStrip_RescaleConstantsForDpi_*'" `
+            -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-tests.binlog `
+            /m:1
+          exit $LASTEXITCODE
+
+      - name: Upload build logs and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-results-${{ matrix.architecture }}-${{ matrix.configuration }}
+          path: |
+            artifacts/log/**
+            artifacts/TestResults/**
+          if-no-files-found: warn
