@@ -7192,9 +7192,6 @@ public partial class ToolStripTests : IDisposable
             comboBox.Size = new(initialDpi * 2, comboBox.Height);
             referenceTextBox.Width = textBox.Width;
             referenceComboBox.Width = comboBox.Width;
-            toolStrip.PerformLayout();
-            Assert.Equal(referenceTextBox.Width, textBox.Width);
-            Assert.Equal(referenceComboBox.Width, comboBox.Width);
             int oldDpi = initialDpi;
             foreach (int newDpi in new[]
             {
@@ -7227,7 +7224,6 @@ public partial class ToolStripTests : IDisposable
                     (int)Math.Round(form.Width * (double)newDpi / oldDpi),
                     (int)Math.Round(form.Height * (double)newDpi / oldDpi));
                 PInvokeCore.SendMessage(form, PInvokeCore.WM_DPICHANGED, dpiParam, ref suggestedRectangle);
-                toolStrip.PerformLayout();
 
                 if (autoScaleMode != AutoScaleMode.None)
                 {

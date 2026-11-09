@@ -362,8 +362,6 @@ public partial class ToolStripControlHost : ToolStripItem
                 specifiedBounds = _control.Bounds;
                 specifiedBounds.Size = value;
                 CommonProperties.UpdateSpecifiedBounds(_control, specifiedBounds.X, specifiedBounds.Y, specifiedBounds.Width, specifiedBounds.Height);
-                // Preferred size can depend on specified bounds even when the control does not resize.
-                CommonProperties.xClearPreferredSizeCache(_control);
             }
 
             base.Size = value;
@@ -375,7 +373,6 @@ public partial class ToolStripControlHost : ToolStripItem
                 if (bounds != specifiedBounds)
                 {
                     CommonProperties.UpdateSpecifiedBounds(_control, bounds.X, bounds.Y, bounds.Width, bounds.Height);
-                    CommonProperties.xClearPreferredSizeCache(_control);
                 }
             }
         }
