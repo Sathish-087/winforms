@@ -478,6 +478,7 @@ public partial class ToolStripControlHost : ToolStripItem
             return;
         }
 
+        Size originalSize = Size;
         // Capture item width before font/layout mutations; ToolStripItem sizes are not OS-scaled with the form.
         int baseWidth = Width > 0 ? Width : hostedControl.Width;
         int baseHeight = Height;
@@ -509,6 +510,11 @@ public partial class ToolStripControlHost : ToolStripItem
 
             if (container.AutoScaleMode != AutoScaleMode.None)
             {
+                if (Size != originalSize)
+                {
+                    Size = originalSize;
+                }
+
                 InvalidateItemLayout(PropertyNames.Font);
                 return;
             }
