@@ -730,10 +730,18 @@ public partial class ToolStripControlHost : ToolStripItem
 
     private void HandleResize(object? sender, EventArgs e)
     {
-        if (_suspendSyncSizeCount == 0)
+        if (_suspendSyncSizeCount != 0)
         {
-            OnHostedControlResize(e);
+            return;
         }
+
+        if (this is ToolStripTextBox or ToolStripComboBox && ParentInternal is ToolStrip toolStrip
+            && ControlInternal.DeviceDpi != toolStrip.DeviceDpi)
+        {
+            return;
+        }
+
+        OnHostedControlResize(e);
     }
 
     private void HandleTextChanged(object? sender, EventArgs e) => OnTextChanged(e);
