@@ -102,6 +102,8 @@ public partial class ToolStripComboBox : ToolStripControlHost
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public ComboBox ComboBox => (ComboBox)Control;
 
+    internal void SetFontForDpi(Font font) => ((ToolStripComboBoxControl)Control).SetFontForDpi(font);
+
     protected override Size DefaultSize => new(100, 22);
 
     protected internal override Padding DefaultMargin => IsOnDropDown
