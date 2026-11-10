@@ -7180,7 +7180,6 @@ public partial class ToolStripTests : IDisposable
             using UserControl container = new() { AutoScaleMode = autoScaleMode, Dock = DockStyle.Fill };
             using ToolStrip toolStrip = new()
             {
-                Dock = DockStyle.None,
                 CanOverflow = false
             };
             using ToolStripTextBox textBox = new();
@@ -7192,7 +7191,6 @@ public partial class ToolStripTests : IDisposable
             form.Controls.Add(container);
             form.Show();
             int initialDpi = form.DeviceDpi;
-            toolStrip.Width = initialDpi * 16;
             textBox.Size = new(initialDpi * 2, textBox.Height);
             comboBox.Size = new(initialDpi * 2, comboBox.Height);
             referenceTextBox.Width = textBox.Width;
@@ -7238,16 +7236,7 @@ public partial class ToolStripTests : IDisposable
                 }
 
                 Assert.Equal(expectedTextBoxWidth, textBox.Width);
-                Assert.True(
-                    expectedComboBoxWidth == comboBox.Width,
-                    $"Mode={autoScaleMode}, DPI={oldDpi}->{newDpi}, " +
-                    $"ExpectedWidth={expectedComboBoxWidth}, ActualWidth={comboBox.Width}, " +
-                    $"ItemSize={comboBox.Size}, Placement={comboBox.Placement}, " +
-                    $"ControlBounds={comboBox.Control.Bounds}, " +
-                    $"ControlPreferredSize={comboBox.Control.PreferredSize}, " +
-                    $"ControlDpi={comboBox.Control.DeviceDpi}, " +
-                    $"ControlParent={comboBox.Control.Parent?.GetType().Name}, " +
-                    $"ToolStripSize={toolStrip.Size}, FormSize={form.Size}");
+                Assert.Equal(expectedComboBoxWidth, comboBox.Width);
                 Assert.Equal(textBox.Width, textBox.Control.Width);
                 Assert.Equal(comboBox.Width, comboBox.Control.Width);
                 oldDpi = newDpi;
