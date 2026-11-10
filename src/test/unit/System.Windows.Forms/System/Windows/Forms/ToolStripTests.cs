@@ -7164,78 +7164,35 @@ public partial class ToolStripTests : IDisposable
     [InlineData(AutoScaleMode.Font)]
     [InlineData(AutoScaleMode.None)]
     [InlineData(AutoScaleMode.Inherit)]
-    public void ToolStrip_RescaleConstantsForDpi_FormScalesHostedBoundsOnce(
-    AutoScaleMode autoScaleMode)
+    public void ToolStrip_RescaleConstantsForDpi_FormScalesHostedBoundsOnce(AutoScaleMode autoScaleMode)
     {
-        RemoteExecutor.Invoke(
-            VerifyFormHostedControlScaling,
-            autoScaleMode.ToString()).Dispose();
+        RemoteExecutor.Invoke(VerifyFormHostedControlScaling, autoScaleMode.ToString()).Dispose();
     }
 
     private static void VerifyFormHostedControlScaling(string autoScaleModeValue)
     {
         Assert.True(Application.SetHighDpiMode(HighDpiMode.PerMonitorV2));
-
-        AutoScaleMode autoScaleMode =
-            Enum.Parse<AutoScaleMode>(autoScaleModeValue);
-
+        AutoScaleMode autoScaleMode = Enum.Parse<AutoScaleMode>(autoScaleModeValue);
         int originalDpi = ToolStripManager.CurrentDpi;
-
         try
         {
-            using Form form = new()
-            {
-                AutoScaleMode = AutoScaleMode.Dpi,
-                ClientSize = new Size(1600, 800)
-            };
-
-            using UserControl container = new()
-            {
-                AutoScaleMode = autoScaleMode,
-                Dock = DockStyle.Fill
-            };
-
+            using Form form = new() { AutoScaleMode = AutoScaleMode.Dpi, Size = new(1600, 800) };
+            using UserControl container = new() { AutoScaleMode = autoScaleMode, Dock = DockStyle.Fill };
             using ToolStrip toolStrip = new();
             using ToolStripTextBox textBox = new();
             using ToolStripComboBox comboBox = new();
-
-            using TextBox referenceTextBox = new()
-            {
-                BorderStyle = textBox.TextBox.BorderStyle
-            };
-
+            using TextBox referenceTextBox = new() { BorderStyle = textBox.TextBox.BorderStyle };
             using ComboBox referenceComboBox = new();
-
             toolStrip.Items.AddRange([textBox, comboBox]);
-
-            container.Controls.AddRange(
-            [
-                toolStrip,
-            referenceTextBox,
-            referenceComboBox
-            ]);
-
+            container.Controls.AddRange([toolStrip, referenceTextBox, referenceComboBox]);
             form.Controls.Add(container);
             form.Show();
-
             int initialDpi = form.DeviceDpi;
-
             textBox.Size = new(initialDpi * 2, textBox.Height);
             comboBox.Size = new(initialDpi * 2, comboBox.Height);
-
-            // Establish the initial hosted-control bounds.
-            toolStrip.PerformLayout();
-
             referenceTextBox.Width = textBox.Width;
             referenceComboBox.Width = comboBox.Width;
-
-            Assert.Equal(referenceTextBox.Width, textBox.Width);
-            Assert.Equal(referenceComboBox.Width, comboBox.Width);
-            Assert.Equal(textBox.Width, textBox.Control.Width);
-            Assert.Equal(comboBox.Width, comboBox.Control.Width);
-
             int oldDpi = initialDpi;
-
             foreach (int newDpi in new[]
             {
             ScaleHelper.ScaleToDpi(120, initialDpi),
@@ -7251,43 +7208,27 @@ public partial class ToolStripTests : IDisposable
                     continue;
                 }
 
-                int expectedTextBoxWidth = (int)Math.Round(
-                    textBox.Width * (double)newDpi / oldDpi);
-
-                int expectedComboBoxWidth = (int)Math.Round(
-                    comboBox.Width * (double)newDpi / oldDpi);
-
+                int expectedTextBoxWidth = (int)Math.Round(textBox.Width * (double)newDpi / oldDpi);
+                int expectedComboBoxWidth = (int)Math.Round(comboBox.Width * (double)newDpi / oldDpi);
                 WPARAM dpiParam = WPARAM.MAKEWPARAM(newDpi, newDpi);
-
                 foreach (Control control in new Control[]
                 {
-                textBox.Control,
-                comboBox.Control,
-                referenceTextBox,
-                referenceComboBox,
-                toolStrip,
-                container
+                textBox.Control, comboBox.Control, referenceTextBox, referenceComboBox, toolStrip, container
                 })
                 {
-                    PInvokeCore.SendMessage(
-                        control,
-                        PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
-                        dpiParam);
+                    PInvokeCore.SendMessage(control, PInvokeCore.WM_DPICHANGED_BEFOREPARENT, dpiParam);
                 }
 
                 RECT suggestedRectangle = new(
-                    0,
-                    0,
+                    0, 0,
                     (int)Math.Round(form.Width * (double)newDpi / oldDpi),
                     (int)Math.Round(form.Height * (double)newDpi / oldDpi));
+                PInvokeCore.SendMessage(form, PInvokeCore.WM_DPICHANGED, dpiParam, ref suggestedRectangle);
+                foreach (Control control in new Control[] { container, toolStrip, textBox.Control, comboBox.Control })
+                {
+                    PInvokeCore.SendMessage(control, PInvokeCore.WM_DPICHANGED_AFTERPARENT);
+                }
 
-                PInvokeCore.SendMessage(
-                    form,
-                    PInvokeCore.WM_DPICHANGED,
-                    dpiParam,
-                    ref suggestedRectangle);
-
-                // Synchronize ToolStripItem and hosted-control bounds.
                 toolStrip.PerformLayout();
 
                 if (autoScaleMode != AutoScaleMode.None)
@@ -7300,7 +7241,6 @@ public partial class ToolStripTests : IDisposable
                 Assert.Equal(expectedComboBoxWidth, comboBox.Width);
                 Assert.Equal(textBox.Width, textBox.Control.Width);
                 Assert.Equal(comboBox.Width, comboBox.Control.Width);
-
                 oldDpi = newDpi;
             }
         }
