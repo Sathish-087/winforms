@@ -489,15 +489,7 @@ public partial class ToolStripControlHost : ToolStripItem
 
         if (rescaleFont)
         {
-            SuspendSizeSync();
-            try
-            {
-                SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
-            }
-            finally
-            {
-                ResumeSizeSync();
-            }
+            SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
         }
 
         // Sync the hosted control DeviceDpi to the new DPI so that any synchronous handle recreation from OnFontChanged cannot treat MenuFont-at-new-DPI as still living at the old DPI and WithSize it again.
@@ -730,18 +722,10 @@ public partial class ToolStripControlHost : ToolStripItem
 
     private void HandleResize(object? sender, EventArgs e)
     {
-        if (_suspendSyncSizeCount != 0)
+        if (_suspendSyncSizeCount == 0)
         {
-            return;
+            OnHostedControlResize(e);
         }
-
-        if (this is ToolStripTextBox or ToolStripComboBox && ParentInternal is ToolStrip toolStrip
-            && ControlInternal.DeviceDpi != toolStrip.DeviceDpi)
-        {
-            return;
-        }
-
-        OnHostedControlResize(e);
     }
 
     private void HandleTextChanged(object? sender, EventArgs e) => OnTextChanged(e);
