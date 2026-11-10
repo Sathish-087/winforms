@@ -1,4 +1,4 @@
-name: Validate issue 8277 regression tests
+name: Validate Windows build and full test suites
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
     if: github.repository == 'Sathish-087/winforms'
     name: Windows ${{ matrix.architecture }} ${{ matrix.configuration }}
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -27,32 +27,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Windows Forms regression tests
+      - name: Clean build artifacts
         run: |
-          & .\eng\common\build.ps1 `
-            -nativeToolsOnMachine `
-            -restore `
-            -build `
+          & .\build.cmd -clean
+          exit $LASTEXITCODE
+
+      - name: Build Windows Forms solution
+        id: build
+        run: |
+          & .\build.cmd `
             -msbuildEngine dotnet `
             -configuration ${{ matrix.configuration }} `
             -platform ${{ matrix.architecture }} `
             -projects Winforms.sln `
             /p:TargetArchitecture=${{ matrix.architecture }} `
-            -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-build.binlog
+            -binaryLogName full-build.binlog
           exit $LASTEXITCODE
 
-      - name: Run hosted-control sizing and DPI regression tests
+      - name: Run all unit tests
         run: |
           & .\eng\common\build.ps1 `
             -nativeToolsOnMachine `
             -test `
             -msbuildEngine dotnet `
             -configuration ${{ matrix.configuration }} `
-            -platform AnyCPU `
-            -projects src/test/unit/System.Windows.Forms/System.Windows.Forms.Tests.csproj `
+            -platform ${{ matrix.architecture }} `
             /p:TargetArchitecture=${{ matrix.architecture }} `
-            "/p:TestRunnerAdditionalArguments=--filter-method System.Windows.Forms.Tests.ToolStripControlHostTests.ToolStripControlHost_Size_* --filter-method System.Windows.Forms.Tests.ToolStripTests.ToolStrip_RescaleConstantsForDpi_* --minimum-expected-tests 6 --show-test-results all" `
-            -binaryLogName artifacts/log/${{ matrix.configuration }}/regression-tests.binlog `
+            -binaryLogName unit-tests.binlog `
+            /m:1
+          exit $LASTEXITCODE
+
+      - name: Run all integration tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          XUNIT_LOGS: ${{ github.workspace }}\artifacts\log\${{ matrix.configuration }}
+        run: |
+          & .\eng\common\build.ps1 `
+            -nativeToolsOnMachine `
+            -integrationTest `
+            -msbuildEngine dotnet `
+            -configuration ${{ matrix.configuration }} `
+            -platform ${{ matrix.architecture }} `
+            /p:TargetArchitecture=${{ matrix.architecture }} `
+            -binaryLogName integration-tests.binlog `
             /m:1
           exit $LASTEXITCODE
 
@@ -60,7 +77,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: regression-results-${{ matrix.architecture }}-${{ matrix.configuration }}
+          name: full-test-results-${{ matrix.architecture }}-${{ matrix.configuration }}
           path: |
             artifacts/log/**
             artifacts/TestResults/**
