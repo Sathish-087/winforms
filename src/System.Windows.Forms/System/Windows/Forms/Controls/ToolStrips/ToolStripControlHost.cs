@@ -487,16 +487,24 @@ public partial class ToolStripControlHost : ToolStripItem
             baseWidth = specified.Width > 0 ? specified.Width : hostedControl.PreferredSize.Width;
         }
 
-        // Sync the hosted control font to the ToolStrip menu font (or scale a truly user-set font) for the new DPI.
-        if (rescaleFont)
+        SuspendSizeSync();
+        try
         {
-            SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
-        }
+            // Sync the hosted control font to the ToolStrip menu font (or scale a truly user-set font) for the new DPI.
+            if (rescaleFont)
+            {
+                SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
+            }
 
-        // Sync the hosted control DeviceDpi to the new DPI so that any synchronous handle recreation from OnFontChanged cannot treat MenuFont-at-new-DPI as still living at the old DPI and WithSize it again.
-        if (hostedControl.DeviceDpi != deviceDpiNew)
+            // Sync the hosted control DeviceDpi to the new DPI so that any synchronous handle recreation from OnFontChanged cannot treat MenuFont-at-new-DPI as still living at the old DPI and WithSize it again.
+            if (hostedControl.DeviceDpi != deviceDpiNew)
+            {
+                hostedControl.DeviceDpiInternal = deviceDpiNew;
+            }
+        }
+        finally
         {
-            hostedControl.DeviceDpiInternal = deviceDpiNew;
+            ResumeSizeSync();
         }
 
         // An autoscaling container will scale this control through ToolStrip.Controls after
