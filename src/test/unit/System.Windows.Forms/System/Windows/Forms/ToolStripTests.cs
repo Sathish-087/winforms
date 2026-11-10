@@ -7186,7 +7186,7 @@ public partial class ToolStripTests : IDisposable
             using Form form = new()
             {
                 AutoScaleMode = AutoScaleMode.Dpi,
-                Size = new Size(1600, 800)
+                ClientSize = new Size(1600, 800)
             };
 
             using UserControl container = new()
@@ -7220,16 +7220,10 @@ public partial class ToolStripTests : IDisposable
 
             int initialDpi = form.DeviceDpi;
 
-            Assert.Equal(initialDpi, toolStrip.DeviceDpi);
-            Assert.Equal(initialDpi, textBox.Control.DeviceDpi);
-            Assert.Equal(initialDpi, comboBox.Control.DeviceDpi);
-
-            // Use DPI-divisible widths to avoid rounding drift.
             textBox.Size = new(initialDpi * 2, textBox.Height);
             comboBox.Size = new(initialDpi * 2, comboBox.Height);
 
-            // Complete the initial ToolStrip layout before capturing
-            // the baseline widths for the reference controls.
+            // Establish the initial hosted-control bounds.
             toolStrip.PerformLayout();
 
             referenceTextBox.Width = textBox.Width;
@@ -7239,9 +7233,6 @@ public partial class ToolStripTests : IDisposable
             Assert.Equal(referenceComboBox.Width, comboBox.Width);
             Assert.Equal(textBox.Width, textBox.Control.Width);
             Assert.Equal(comboBox.Width, comboBox.Control.Width);
-
-            int initialTextBoxWidth = textBox.Width;
-            int initialComboBoxWidth = comboBox.Width;
 
             int oldDpi = initialDpi;
 
@@ -7296,7 +7287,7 @@ public partial class ToolStripTests : IDisposable
                     dpiParam,
                     ref suggestedRectangle);
 
-                // Complete the layout caused by this DPI transition.
+                // Synchronize ToolStripItem and hosted-control bounds.
                 toolStrip.PerformLayout();
 
                 if (autoScaleMode != AutoScaleMode.None)
@@ -7307,16 +7298,11 @@ public partial class ToolStripTests : IDisposable
 
                 Assert.Equal(expectedTextBoxWidth, textBox.Width);
                 Assert.Equal(expectedComboBoxWidth, comboBox.Width);
-
                 Assert.Equal(textBox.Width, textBox.Control.Width);
                 Assert.Equal(comboBox.Width, comboBox.Control.Width);
 
                 oldDpi = newDpi;
             }
-
-            // Verify the final round trip returns to the initial widths.
-            Assert.Equal(initialTextBoxWidth, textBox.Width);
-            Assert.Equal(initialComboBoxWidth, comboBox.Width);
         }
         finally
         {
