@@ -6,7 +6,6 @@
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Globalization;
 using System.Windows.Forms.TestUtilities;
 using Microsoft.DotNet.RemoteExecutor;
 using Microsoft.Win32;
@@ -7165,136 +7164,94 @@ public partial class ToolStripTests : IDisposable
     [InlineData(AutoScaleMode.Font)]
     [InlineData(AutoScaleMode.None)]
     [InlineData(AutoScaleMode.Inherit)]
-    public void ToolStrip_RescaleConstantsForDpi_FormScalesHostedBoundsOnce(
-    AutoScaleMode autoScaleMode)
+    public void ToolStrip_RescaleConstantsForDpi_FormScalesHostedBoundsOnce(AutoScaleMode autoScaleMode)
     {
-        // Each transition starts in a separate process to avoid accumulated scaling state.
-        foreach (int scalingPercentage in new[] { 125, 150, 175, 200, 225, 250, 300 })
-        {
-            RemoteExecutor.Invoke(
-                VerifyFormHostedControlScaling,
-                autoScaleMode.ToString(),
-                scalingPercentage.ToString(CultureInfo.InvariantCulture)).Dispose();
-        }
+        RemoteExecutor.Invoke(VerifyFormHostedControlScaling, autoScaleMode.ToString()).Dispose();
     }
 
-    private static void VerifyFormHostedControlScaling(
-        string autoScaleModeValue,
-        string scalingPercentageValue)
+    private static void VerifyFormHostedControlScaling(string autoScaleModeValue)
     {
         Assert.True(Application.SetHighDpiMode(HighDpiMode.PerMonitorV2));
-
         AutoScaleMode autoScaleMode = Enum.Parse<AutoScaleMode>(autoScaleModeValue);
-        int scalingPercentage = int.Parse(
-            scalingPercentageValue,
-            CultureInfo.InvariantCulture);
-
         int originalDpi = ToolStripManager.CurrentDpi;
-
         try
         {
-            using Form form = new()
+            using Form form = new() { AutoScaleMode = AutoScaleMode.Dpi, Size = new(1600, 800) };
+            using UserControl container = new() { AutoScaleMode = autoScaleMode, Dock = DockStyle.Fill };
+            using ToolStrip toolStrip = new()
             {
-                AutoScaleMode = AutoScaleMode.Dpi,
-                ClientSize = new(1600, 800)
+                Dock = DockStyle.None,
+                CanOverflow = false
             };
-
-            using UserControl container = new()
-            {
-                AutoScaleMode = autoScaleMode,
-                Dock = DockStyle.Fill
-            };
-
-            using ToolStrip toolStrip = new();
             using ToolStripTextBox textBox = new();
             using ToolStripComboBox comboBox = new();
-
-            using TextBox referenceTextBox = new()
-            {
-                BorderStyle = textBox.TextBox.BorderStyle
-            };
-
+            using TextBox referenceTextBox = new() { BorderStyle = textBox.TextBox.BorderStyle };
             using ComboBox referenceComboBox = new();
-
             toolStrip.Items.AddRange([textBox, comboBox]);
             container.Controls.AddRange([toolStrip, referenceTextBox, referenceComboBox]);
             form.Controls.Add(container);
             form.Show();
-
             int initialDpi = form.DeviceDpi;
-
-            Assert.Equal(initialDpi, toolStrip.DeviceDpi);
-            Assert.Equal(initialDpi, textBox.Control.DeviceDpi);
-            Assert.Equal(initialDpi, comboBox.Control.DeviceDpi);
-
-            // A multiple of the initial DPI gives integral widths for quarter-step transitions.
-            int initialWidth = checked(initialDpi * 4);
-            textBox.Size = new(initialWidth, textBox.Height);
-            comboBox.Size = new(initialWidth, comboBox.Height);
-            toolStrip.PerformLayout();
-
+            toolStrip.Width = initialDpi * 16;
+            textBox.Size = new(initialDpi * 2, textBox.Height);
+            comboBox.Size = new(initialDpi * 2, comboBox.Height);
             referenceTextBox.Width = textBox.Width;
             referenceComboBox.Width = comboBox.Width;
-
-            int initialTextBoxWidth = textBox.Width;
-            int initialComboBoxWidth = comboBox.Width;
-
-            Assert.Equal(initialWidth, initialTextBoxWidth);
-            Assert.Equal(initialWidth, initialComboBoxWidth);
-            Assert.Equal(textBox.Width, textBox.Control.Width);
-            Assert.Equal(comboBox.Width, comboBox.Control.Width);
-
-            // Percentages are relative to the machine's initial DPI.
-            int newDpi = checked((int)Math.Round(initialDpi * scalingPercentage / 100d));
-            double scaleFactor = newDpi / (double)initialDpi;
-
-            int expectedTextBoxWidth =
-                checked((int)Math.Round(initialTextBoxWidth * scaleFactor));
-            int expectedComboBoxWidth =
-                checked((int)Math.Round(initialComboBoxWidth * scaleFactor));
-
-            WPARAM dpiParam = WPARAM.MAKEWPARAM(newDpi, newDpi);
-
-            foreach (Control control in new Control[]
+            int oldDpi = initialDpi;
+            foreach (int newDpi in new[]
             {
-            textBox.Control,
-            comboBox.Control,
-            referenceTextBox,
-            referenceComboBox,
-            toolStrip,
-            container
+                ScaleHelper.ScaleToDpi(120, initialDpi),
+                ScaleHelper.ScaleToDpi(144, initialDpi),
+                ScaleHelper.ScaleToDpi(168, initialDpi),
+                ScaleHelper.ScaleToDpi(96, initialDpi),
+                ScaleHelper.ScaleToDpi(288, initialDpi),
+                initialDpi
             })
             {
-                PInvokeCore.SendMessage(
-                    control,
-                    PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
-                    dpiParam);
+                if (newDpi == oldDpi)
+                {
+                    continue;
+                }
+
+                int expectedTextBoxWidth = (int)Math.Round(textBox.Width * (double)newDpi / oldDpi);
+                int expectedComboBoxWidth = (int)Math.Round(comboBox.Width * (double)newDpi / oldDpi);
+                WPARAM dpiParam = WPARAM.MAKEWPARAM(newDpi, newDpi);
+                foreach (Control control in new Control[]
+                {
+                    textBox.Control, comboBox.Control, referenceTextBox, referenceComboBox, toolStrip, container
+                })
+                {
+                    PInvokeCore.SendMessage(control, PInvokeCore.WM_DPICHANGED_BEFOREPARENT, dpiParam);
+                }
+
+                RECT suggestedRectangle = new(
+                    0, 0,
+                    (int)Math.Round(form.Width * (double)newDpi / oldDpi),
+                    (int)Math.Round(form.Height * (double)newDpi / oldDpi));
+                PInvokeCore.SendMessage(form, PInvokeCore.WM_DPICHANGED, dpiParam, ref suggestedRectangle);
+                toolStrip.PerformLayout();
+
+                if (autoScaleMode != AutoScaleMode.None)
+                {
+                    expectedTextBoxWidth = referenceTextBox.Width;
+                    expectedComboBoxWidth = referenceComboBox.Width;
+                }
+
+                Assert.Equal(expectedTextBoxWidth, textBox.Width);
+                Assert.True(
+                    expectedComboBoxWidth == comboBox.Width,
+                    $"Mode={autoScaleMode}, DPI={oldDpi}->{newDpi}, " +
+                    $"ExpectedWidth={expectedComboBoxWidth}, ActualWidth={comboBox.Width}, " +
+                    $"ItemSize={comboBox.Size}, Placement={comboBox.Placement}, " +
+                    $"ControlBounds={comboBox.Control.Bounds}, " +
+                    $"ControlPreferredSize={comboBox.Control.PreferredSize}, " +
+                    $"ControlDpi={comboBox.Control.DeviceDpi}, " +
+                    $"ControlParent={comboBox.Control.Parent?.GetType().Name}, " +
+                    $"ToolStripSize={toolStrip.Size}, FormSize={form.Size}");
+                Assert.Equal(textBox.Width, textBox.Control.Width);
+                Assert.Equal(comboBox.Width, comboBox.Control.Width);
+                oldDpi = newDpi;
             }
-
-            RECT suggestedRectangle = new(
-                0,
-                0,
-                checked((int)Math.Round(form.Width * scaleFactor)),
-                checked((int)Math.Round(form.Height * scaleFactor)));
-
-            PInvokeCore.SendMessage(
-                form,
-                PInvokeCore.WM_DPICHANGED,
-                dpiParam,
-                ref suggestedRectangle);
-
-            toolStrip.PerformLayout();
-
-            if (autoScaleMode != AutoScaleMode.None)
-            {
-                expectedTextBoxWidth = referenceTextBox.Width;
-                expectedComboBoxWidth = referenceComboBox.Width;
-            }
-
-            Assert.Equal(expectedTextBoxWidth, textBox.Width);
-            Assert.Equal(expectedComboBoxWidth, comboBox.Width);
-            Assert.Equal(textBox.Width, textBox.Control.Width);
-            Assert.Equal(comboBox.Width, comboBox.Control.Width);
         }
         finally
         {
