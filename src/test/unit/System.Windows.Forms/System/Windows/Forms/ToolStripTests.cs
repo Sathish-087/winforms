@@ -7233,9 +7233,9 @@ public partial class ToolStripTests : IDisposable
                 }
 
                 Assert.Equal(expectedTextBoxWidth, textBox.Width);
-                // Assert.Equal(expectedComboBoxWidth, comboBox.Width);
                 Assert.Equal(textBox.Width, textBox.Control.Width);
-                // Assert.Equal(comboBox.Width, comboBox.Control.Width);
+                Assert.Equal(expectedComboBoxWidth, comboBox.Width);
+                Assert.Equal(comboBox.Width, comboBox.Control.Width);
                 oldDpi = newDpi;
             }
         }
