@@ -614,10 +614,6 @@ public partial class ToolStripControlHost : ToolStripItem
             {
                 textBox.SetFontForDpi(newDefaultFont);
             }
-            else if (this is ToolStripComboBox comboBox)
-            {
-                comboBox.SetFontForDpi(newDefaultFont);
-            }
             else
             {
                 hostedControl.Font = newDefaultFont;
