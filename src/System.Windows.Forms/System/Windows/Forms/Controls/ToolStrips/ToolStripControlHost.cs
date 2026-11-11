@@ -15,7 +15,6 @@ public partial class ToolStripControlHost : ToolStripItem
 {
     private Control _control;
     private int _suspendSyncSizeCount;
-    private bool _skipHostedControlBoundsSync;
     private ContentAlignment _controlAlign = ContentAlignment.MiddleCenter;
     private bool _inSetVisibleCore;
 
@@ -488,7 +487,6 @@ public partial class ToolStripControlHost : ToolStripItem
             baseWidth = specified.Width > 0 ? specified.Width : hostedControl.PreferredSize.Width;
         }
 
-        // Sync the hosted control font to the ToolStrip menu font (or scale a truly user-set font) for the new DPI.
         if (rescaleFont)
         {
             SyncHostedControlFontForDpiChange(hostedControl, deviceDpiOld, deviceDpiNew);
@@ -501,9 +499,7 @@ public partial class ToolStripControlHost : ToolStripItem
         }
 
         // An autoscaling container will scale this control through ToolStrip.Controls after
-        // WM_DPICHANGED_BEFOREPARENT. Update only the item bounds here so the control is
-        // scaled once by the container pass.
-        bool deferHostedControlBoundsSync = false;
+        // WM_DPICHANGED_BEFOREPARENT. Leave its bounds to that pass to avoid scaling them twice.
         for (Control? parent = hostedControl.ParentInternal; parent is not null; parent = parent.ParentInternal)
         {
             if (parent is not ContainerControl container || container.AutoScaleMode == AutoScaleMode.Inherit)
@@ -513,7 +509,8 @@ public partial class ToolStripControlHost : ToolStripItem
 
             if (container.AutoScaleMode != AutoScaleMode.None)
             {
-                deferHostedControlBoundsSync = true;
+                InvalidateItemLayout(PropertyNames.Font);
+                return;
             }
 
             break;
@@ -536,29 +533,11 @@ public partial class ToolStripControlHost : ToolStripItem
         // If the item size is already set to the new size, we still need to call OnBoundsChanged to ensure the hosted control is aligned correctly.
         if (Size != newSize)
         {
-            if (deferHostedControlBoundsSync)
-            {
-                _skipHostedControlBoundsSync = true;
-                try
-                {
-                    Size = newSize;
-                }
-                finally
-                {
-                    _skipHostedControlBoundsSync = false;
-                }
-            }
-            else
-            {
-                Size = newSize;
-            }
+            Size = newSize;
         }
         else if (hostedControl.Size != newSize)
         {
-            if (!deferHostedControlBoundsSync)
-            {
-                OnBoundsChanged();
-            }
+            OnBoundsChanged();
         }
 
         InvalidateItemLayout(PropertyNames.Font);
@@ -815,7 +794,7 @@ public partial class ToolStripControlHost : ToolStripItem
     /// </summary>
     protected override void OnBoundsChanged()
     {
-        if (_skipHostedControlBoundsSync || _control is not IArrangedElement element)
+        if (_control is not IArrangedElement element)
         {
             return;
         }
