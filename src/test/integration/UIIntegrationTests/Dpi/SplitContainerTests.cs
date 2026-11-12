@@ -4,6 +4,7 @@
 using System.Drawing;
 using System.Windows.Forms.Layout;
 using Windows.Win32.UI.HiDpi;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace System.Windows.Forms.UITests.Dpi;
 
@@ -75,13 +76,15 @@ public class SplitContainerTests : ControlTestBase
     }
 
     [WinFormsFact]
-    public void SplitContainer_ListBoxAnchoredAll_TemporaryPanelGrowth_PreservesBottomAnchorInfo()
+    public void ListBox_TemporaryParentGrowthDuringDpiTransition_PreservesBottomAnchor()
     {
         using AnchorLayoutV2Scope scope = new(enable: false);
         bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+
         try
         {
             typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+
             using Form form = new()
             {
                 AutoScaleMode = AutoScaleMode.None,
@@ -95,13 +98,13 @@ public class SplitContainerTests : ControlTestBase
                 FixedPanel = FixedPanel.Panel2,
                 SplitterDistance = 600
             };
-
             using ListBox listBox = new()
             {
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Location = new Point(10, 10),
                 Size = new Size(60, 20)
             };
+
             listBox.Items.AddRange(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]);
             splitContainer.Panel1.Controls.Add(listBox);
             form.Controls.Add(splitContainer);
@@ -109,36 +112,49 @@ public class SplitContainerTests : ControlTestBase
 
             Assert.True(listBox.IsHandleCreated);
             Assert.False(DefaultLayout.UseAnchorLayoutV2(listBox));
+
             DefaultLayout.AnchorInfo anchorInfo = Assert.IsType<DefaultLayout.AnchorInfo>(
                 DefaultLayout.GetAnchorInfo(listBox));
-            Rectangle oldBounds = listBox.Bounds;
-            int oldPanelDisplayHeight = splitContainer.Panel1.DisplayRectangle.Height;
-            Size oldClientSize = form.ClientSize;
-            int baselineBottom = listBox.Bottom - oldPanelDisplayHeight;
-            Assert.True(baselineBottom < 0);
 
-            // Establish the baseline after native IntegralHeight adjustment, preserving the other anchors.
+            Rectangle oldBounds = listBox.Bounds;
+            int oldPanelHeight = splitContainer.Panel1.DisplayRectangle.Height;
+            Size oldClientSize = form.ClientSize;
+            int baselineBottom = listBox.Bottom - oldPanelHeight;
+
+            Assert.True(baselineBottom < 0);
             anchorInfo.Bottom = baselineBottom;
 
+            form.TestAccessor.Dynamic._isScaledByDpiChangedEvent = true;
             splitContainer.Panel1.SuspendLayout();
+
             try
             {
                 form.ClientSize = new Size(oldClientSize.Width, oldClientSize.Height + 3);
-                Assert.Equal(oldPanelDisplayHeight + 3, splitContainer.Panel1.DisplayRectangle.Height);
+
+                Assert.Equal(oldPanelHeight + 3, splitContainer.Panel1.DisplayRectangle.Height);
                 Assert.Equal(oldBounds, listBox.Bounds);
+
                 int proposedBottom = listBox.Bottom - splitContainer.Panel1.DisplayRectangle.Height;
                 Assert.True(proposedBottom < baselineBottom);
 
-                // Reproduce anchor rebaking during temporary parent growth without injecting cached bounds.
                 typeof(DefaultLayout).TestAccessor.Dynamic.UpdateAnchorInfo(listBox);
-                DefaultLayout.AnchorInfo anchorInfoAfterRebake = Assert.IsType<DefaultLayout.AnchorInfo>(
+
+                DefaultLayout.AnchorInfo updatedAnchorInfo = Assert.IsType<DefaultLayout.AnchorInfo>(
                     DefaultLayout.GetAnchorInfo(listBox));
-                Assert.Equal(baselineBottom, anchorInfoAfterRebake.Bottom);
+
+                Assert.Equal(baselineBottom, updatedAnchorInfo.Bottom);
             }
             finally
             {
-                form.ClientSize = oldClientSize;
-                splitContainer.Panel1.ResumeLayout(performLayout: true);
+                try
+                {
+                    form.ClientSize = oldClientSize;
+                    splitContainer.Panel1.ResumeLayout(performLayout: true);
+                }
+                finally
+                {
+                    form.TestAccessor.Dynamic._isScaledByDpiChangedEvent = false;
+                }
             }
 
             Assert.Equal(oldBounds, listBox.Bounds);
@@ -147,5 +163,133 @@ public class SplitContainerTests : ControlTestBase
         {
             typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
         }
+    }
+
+    [WinFormsTheory]
+    [InlineData(AutoScaleMode.Font)]
+    [InlineData(AutoScaleMode.Dpi)]
+    public void ListBox_RepeatedDpiTransitions_PreservesHeight(AutoScaleMode autoScaleMode)
+    {
+        if (!PlatformDetection.IsWindows10Version1803OrGreater)
+        {
+            Assert.Skip("Per-monitor DPI awareness is unavailable.");
+        }
+
+        Screen[] screens = Screen.AllScreens.OrderBy(screen => screen.Bounds.X).ToArray();
+        if (screens.Length < 2)
+        {
+            Assert.Skip("Two monitors are required.");
+        }
+
+        if (!(bool)typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware)
+        {
+            Assert.Skip("The test process must be per-monitor DPI aware.");
+        }
+
+        DPI_AWARENESS_CONTEXT originalAwarenessContext = PInvoke.SetThreadDpiAwarenessContextInternal(
+            DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+        try
+        {
+            using AnchorLayoutV2Scope scope = new(enable: false);
+            using Form form = new()
+            {
+                AutoScaleDimensions = autoScaleMode == AutoScaleMode.Dpi
+                    ? new SizeF(96, 96)
+                    : new SizeF(7, 15),
+                AutoScaleMode = autoScaleMode,
+                ClientSize = new Size(198, 368),
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(screens[0].WorkingArea.X + 100, screens[0].WorkingArea.Y + 100)
+            };
+            using SplitContainer splitContainer = new()
+            {
+                Size = form.ClientSize,
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Horizontal,
+                SplitterDistance = 217
+            };
+            using ListBox listBox = new()
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                FormattingEnabled = true,
+                Location = new Point(52, 12),
+                Size = new Size(60, 169)
+            };
+
+            listBox.Items.AddRange(
+            [
+                "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+                "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+                "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3"
+            ]);
+
+            splitContainer.Panel1.Controls.Add(listBox);
+            form.Controls.Add(splitContainer);
+            form.Show();
+
+            if (!WaitForNativeDpi(form, 96))
+            {
+                Assert.Skip("The left monitor must use 96 DPI.");
+            }
+
+            Assert.Equal(96, form.DeviceDpi);
+            int originalHeight = listBox.Height;
+
+            for (int i = 0; i < 3; i++)
+            {
+                MoveToScreen(form, screens[1]);
+
+                if (!WaitForNativeDpi(form, 144))
+                {
+                    Assert.Skip("The right monitor must use 144 DPI.");
+                }
+
+                Assert.Equal(144, form.DeviceDpi);
+
+                MoveToScreen(form, screens[0]);
+                Assert.True(WaitForNativeDpi(form, 96));
+                Assert.Equal(96, form.DeviceDpi);
+
+                Application.DoEvents();
+                form.PerformLayout();
+                Assert.Equal(originalHeight, listBox.Height);
+            }
+        }
+        finally
+        {
+            PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
+        }
+    }
+
+    private static void MoveToScreen(Form form, Screen screen)
+    {
+        PInvoke.SetWindowPos(
+            form,
+            HWND.Null,
+            screen.WorkingArea.X + 100,
+            screen.WorkingArea.Y + 100,
+            0,
+            0,
+            SET_WINDOW_POS_FLAGS.SWP_NOZORDER
+                | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
+                | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
+    }
+
+    private static bool WaitForNativeDpi(Form form, int expectedDpi)
+    {
+        Stopwatch timeout = Stopwatch.StartNew();
+
+        while (timeout.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            Application.DoEvents();
+
+            if ((int)PInvoke.GetDpiForWindow(form) == expectedDpi)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

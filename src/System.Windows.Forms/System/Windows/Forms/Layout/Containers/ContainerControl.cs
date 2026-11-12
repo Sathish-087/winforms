@@ -83,6 +83,8 @@ public class ContainerControl : ScrollableControl, IContainerControl
     /// </summary>
     internal SizeF _currentAutoScaleFactor = new(1F, 1F);
 
+    internal bool IsDpiChangeScalingInProgress => _isScaledByDpiChangedEvent;
+
     /// <summary>
     ///  Initializes a new instance of the <see cref="ContainerControl"/> class.
     /// </summary>

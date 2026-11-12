@@ -347,6 +347,37 @@ public class AnchorLayoutTests : ControlTestBase
         return (form, button);
     }
 
+    [WinFormsFact]
+    public void Control_HeightReducedOutsideDpiTransition_PreservesRequestedHeight()
+    {
+        using AnchorLayoutV2Scope scope = new(enable: false);
+        bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+
+        try
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+
+            using Form form = new() { ClientSize = new Size(400, 300) };
+            using Button button = new()
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
+                Bounds = new Rectangle(20, 30, 100, 100)
+            };
+
+            form.Controls.Add(button);
+            form.PerformLayout();
+
+            button.Height = 80;
+            form.PerformLayout();
+
+            Assert.Equal(80, button.Height);
+        }
+        finally
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
+        }
+    }
+
     private static void Dispose(Form form, Button button)
     {
         button.Dispose();

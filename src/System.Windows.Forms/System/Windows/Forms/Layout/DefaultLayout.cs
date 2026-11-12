@@ -805,6 +805,7 @@ internal partial class DefaultLayout : LayoutEngine
                 }
             }
             else if (ScaleHelper.IsScalingRequirementMet
+                && IsDpiChangeScalingInProgress(element)
                 && oldAnchorInfo.Bottom < 0
                 && anchorInfo.Bottom <= parentHeight
                 && proposedBottom < oldAnchorInfo.Bottom
@@ -835,6 +836,19 @@ internal partial class DefaultLayout : LayoutEngine
             anchorInfo.Bottom -= parentHeight / 2;
             anchorInfo.Top -= parentHeight / 2;
         }
+    }
+
+    private static bool IsDpiChangeScalingInProgress(IArrangedElement element)
+    {
+        for (IArrangedElement? parent = element.Container; parent is not null; parent = parent.Container)
+        {
+            if (parent is ContainerControl { IsDpiChangeScalingInProgress: true })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
