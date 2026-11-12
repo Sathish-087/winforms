@@ -1965,7 +1965,9 @@ public partial class ListBox : ListControl
     /// <summary>
     ///  Reparses the objects, getting new text strings for them.
     /// </summary>
-    protected override void RefreshItems()
+    protected override void RefreshItems() => RefreshItemsCore(beforeSelectionRestore: null);
+
+    internal void RefreshItemsCore(Action? beforeSelectionRestore)
     {
         // Store the currently selected object collection.
         ObjectCollection? savedItems = _itemsCollection;
@@ -2006,6 +2008,8 @@ public partial class ListBox : ListControl
         {
             Items.AddRangeInternal(newItems);
         }
+
+        beforeSelectionRestore?.Invoke();
 
         // Restore the selected indices if SelectionMode allows it.
         if (SelectionMode != SelectionMode.None)
@@ -2490,7 +2494,13 @@ public partial class ListBox : ListControl
                 break;
 
             case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
+                int topIndex = TopIndex;
                 RecreateHandle();
+                if (Items.Count > 0)
+                {
+                    TopIndex = Math.Min(topIndex, Items.Count - 1);
+                }
+
                 base.WndProc(ref m);
                 break;
 

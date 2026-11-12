@@ -27,6 +27,7 @@ public partial class CheckedListBox : ListBox
     ///  toggling checkboxes.
     /// </summary>
     private bool _killNextSelect;
+    private bool _refreshingItemsForDpi;
 
     /// <summary>
     ///  Current listener of the onItemCheck event.
@@ -840,14 +841,24 @@ public partial class CheckedListBox : ListBox
             savedCheckedItems[i] = CheckedItems.GetCheckedState(i);
         }
 
-        // call the base
-        base.RefreshItems();
-
-        // Data binding can change the item count, so restore only the states that still have an item.
-        int count = Math.Min(savedCheckedItems.Length, Items.Count);
-        for (int j = 0; j < count; j++)
+        if (_refreshingItemsForDpi)
         {
-            CheckedItems.SetCheckedState(j, savedCheckedItems[j]);
+            RefreshItemsCore(RestoreCheckedItems);
+        }
+        else
+        {
+            base.RefreshItems();
+            RestoreCheckedItems();
+        }
+
+        void RestoreCheckedItems()
+        {
+            // Data binding can change the item count, so restore only the states that still have an item.
+            int count = Math.Min(savedCheckedItems.Length, Items.Count);
+            for (int j = 0; j < count; j++)
+            {
+                CheckedItems.SetCheckedState(j, savedCheckedItems[j]);
+            }
         }
     }
 
@@ -944,7 +955,17 @@ public partial class CheckedListBox : ListBox
             case PInvokeCore.WM_DPICHANGED_AFTERPARENT:
                 base.WndProc(ref m);
                 int topIndex = TopIndex;
-                RefreshItems();
+                bool wasRefreshingItemsForDpi = _refreshingItemsForDpi;
+                _refreshingItemsForDpi = true;
+                try
+                {
+                    RefreshItems();
+                }
+                finally
+                {
+                    _refreshingItemsForDpi = wasRefreshingItemsForDpi;
+                }
+
                 if (Items.Count > 0)
                 {
                     TopIndex = Math.Min(topIndex, Items.Count - 1);
