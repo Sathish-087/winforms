@@ -1965,9 +1965,7 @@ public partial class ListBox : ListControl
     /// <summary>
     ///  Reparses the objects, getting new text strings for them.
     /// </summary>
-    protected override void RefreshItems() => RefreshItemsCore(beforeSelectionRestore: null);
-
-    internal void RefreshItemsCore(Action? beforeSelectionRestore)
+    protected override void RefreshItems()
     {
         // Store the currently selected object collection.
         ObjectCollection? savedItems = _itemsCollection;
@@ -2008,8 +2006,6 @@ public partial class ListBox : ListControl
         {
             Items.AddRangeInternal(newItems);
         }
-
-        beforeSelectionRestore?.Invoke();
 
         // Restore the selected indices if SelectionMode allows it.
         if (SelectionMode != SelectionMode.None)
@@ -2495,10 +2491,38 @@ public partial class ListBox : ListControl
 
             case PInvokeCore.WM_DPICHANGED_BEFOREPARENT:
                 int topIndex = TopIndex;
-                RecreateHandle();
+                SelectionMode selectionMode = _selectionMode;
+                int caretIndex = -1;
+                int anchorIndex = -1;
                 if (Items.Count > 0)
                 {
-                    TopIndex = Math.Min(topIndex, Items.Count - 1);
+                    caretIndex = (int)PInvokeCore.SendMessage(this, PInvoke.LB_GETCARETINDEX);
+                    if (selectionMode is SelectionMode.MultiSimple or SelectionMode.MultiExtended)
+                    {
+                        anchorIndex = (int)PInvokeCore.SendMessage(this, PInvoke.LB_GETANCHORINDEX);
+                    }
+                }
+
+                RecreateHandle();
+                int itemCount = Items.Count;
+                if (itemCount > 0)
+                {
+                    if (IsHandleCreated && _selectionMode == selectionMode)
+                    {
+                        // In a single-selection list, restoring the caret for a selected item can change the selection.
+                        if ((uint)caretIndex < (uint)itemCount
+                            && (selectionMode is not SelectionMode.One || SelectedIndex == -1))
+                        {
+                            PInvokeCore.SendMessage(this, PInvoke.LB_SETCARETINDEX, (WPARAM)caretIndex);
+                        }
+
+                        if ((uint)anchorIndex < (uint)itemCount)
+                        {
+                            PInvokeCore.SendMessage(this, PInvoke.LB_SETANCHORINDEX, (WPARAM)anchorIndex);
+                        }
+                    }
+
+                    TopIndex = Math.Min(topIndex, itemCount - 1);
                 }
 
                 base.WndProc(ref m);
