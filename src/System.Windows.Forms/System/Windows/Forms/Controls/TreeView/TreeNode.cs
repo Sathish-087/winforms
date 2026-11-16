@@ -1471,7 +1471,7 @@ public partial class TreeNode : MarshalByRefObject, ICloneable, ISerializable
             if (!e.Cancel)
             {
                 PInvokeCore.SendMessage(tv, PInvoke.TVM_EXPAND, (WPARAM)(uint)NM_TREEVIEW_ACTION.TVE_COLLAPSE, (LPARAM)Handle);
-                tv.OnAfterCollapse(new TreeViewEventArgs(this));
+                tv.OnAfterCollapse(new TreeViewEventArgs(this, TreeViewAction.Collapse));
             }
         }
     }

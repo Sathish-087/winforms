@@ -2682,7 +2682,7 @@ public partial class TreeView : Control
         }
     }
 
-    private void WmMouseDown(ref Message m, MouseButtons button, int clicks)
+    private unsafe void WmMouseDown(ref Message m, MouseButtons button, int clicks)
     {
         // Required to put the TreeView in sane-state for painting proper highlighting of selectedNodes.
         // If the user shows the ContextMenu bu overriding the WndProc( ), then the treeView
@@ -3036,6 +3036,30 @@ public partial class TreeView : Control
                 case PInvoke.TVN_ENDLABELEDITW:
                     m.ResultInternal = TvnEndLabelEdit(*(NMTVDISPINFOW*)(nint)m.LParamInternal);
                     break;
+                case PInvoke.NM_DBLCLK:
+                    Point doubleClickPosition = PointToClient(Cursor.Position);
+                    TVHITTESTINFO doubleClickHitTest = new()
+                    {
+                        pt = doubleClickPosition
+                    };
+
+                    PInvokeCore.SendMessage(this, PInvoke.TVM_HITTEST, 0, ref doubleClickHitTest);
+                    if (CheckBoxes
+                        && (doubleClickHitTest.flags & TVHITTESTINFO_FLAGS.TVHT_ONITEMSTATEICON) != 0
+                        && NodeFromHandle(doubleClickHitTest.hItem) is TreeNode doubleClickNode)
+                    {
+                        // The native control toggles only the visual checkbox before sending NM_DBLCLK.
+                        // Restore the managed state and let the native expand/collapse notification path run.
+                        doubleClickNode.CheckedInternal = doubleClickNode.CheckedInternal;
+                        PInvokeCore.SendMessage(
+                            this,
+                            PInvoke.TVM_EXPAND,
+                            (WPARAM)(uint)NM_TREEVIEW_ACTION.TVE_TOGGLE,
+                            (LPARAM)doubleClickNode.Handle);
+                        m.ResultInternal = (LRESULT)1;
+                    }
+
+                    break;
                 case PInvoke.NM_CLICK:
                 case PInvoke.NM_RCLICK:
                     MouseButtons button = MouseButtons.Left;
@@ -3269,6 +3293,11 @@ public partial class TreeView : Control
                 break;
             case PInvokeCore.WM_LBUTTONDBLCLK:
                 WmMouseDown(ref m, MouseButtons.Left, 2);
+
+                if (!IsHandleCreated || IsDisposed || Disposing || m.HWnd != Handle)
+                {
+                    break;
+                }
 
                 // Just maintain state and fire double click in final mouseUp.
                 _treeViewState[TREEVIEWSTATE_doubleclickFired] = true;
