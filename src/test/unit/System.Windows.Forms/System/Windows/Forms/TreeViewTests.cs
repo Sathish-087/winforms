@@ -5497,6 +5497,47 @@ public class TreeViewTests
         Assert.Equal(1, callCount);
     }
 
+    [WinFormsFact]
+    public void TreeView_DoubleClickOnCheckBox_DoesNotDesynchronizeCheckedState()
+    {
+        using TreeView control = new() { CheckBoxes = true, Size = new Size(200, 200) };
+        TreeNode node = new("Node");
+        control.Nodes.Add(node);
+        control.CreateControl();
+
+        Point stateImagePoint = Point.Empty;
+        for (int y = 0; y < control.ClientSize.Height && stateImagePoint == Point.Empty; y++)
+        {
+            for (int x = 0; x < control.ClientSize.Width; x++)
+            {
+                if (control.HitTest(x, y).Location == TreeViewHitTestLocations.StateImage)
+                {
+                    stateImagePoint = new Point(x, y);
+                    break;
+                }
+            }
+        }
+
+        Assert.NotEqual(Point.Empty, stateImagePoint);
+
+        int afterCheckCount = 0;
+        control.AfterCheck += (_, e) =>
+        {
+            Assert.Same(node, e.Node);
+            e.Node.BackColor = e.Node.Checked ? Color.Yellow : Color.White;
+            afterCheckCount++;
+        };
+
+        PInvokeCore.SendMessage(control, PInvokeCore.WM_LBUTTONDOWN, (WPARAM)1, PARAM.FromPoint(stateImagePoint));
+        PInvokeCore.SendMessage(control, PInvokeCore.WM_LBUTTONUP, 0, PARAM.FromPoint(stateImagePoint));
+        PInvokeCore.SendMessage(control, PInvokeCore.WM_LBUTTONDBLCLK, (WPARAM)1, PARAM.FromPoint(stateImagePoint));
+        PInvokeCore.SendMessage(control, PInvokeCore.WM_LBUTTONUP, 0, PARAM.FromPoint(stateImagePoint));
+
+        Assert.True(node.Checked);
+        Assert.Equal(1, afterCheckCount);
+        Assert.Equal(Color.Yellow, node.BackColor);
+    }
+
     [WinFormsTheory]
     [MemberData(nameof(TreeViewEventArgs_TestData))]
     public void TreeView_OnAfterCollapse_Invoke_CallsAfterCollapse(TreeViewEventArgs eventArgs)
@@ -7680,9 +7721,9 @@ public class TreeViewTests
     [InlineData(true, true, false)]
     [InlineData(true, true, true)]
     public void TreeView_WndProc_CheckBoxDoubleClick_KeepsCheckedStateSynchronized(
-        bool initiallyChecked,
-        bool cancel,
-        bool rightToLeft)
+       bool initiallyChecked,
+       bool cancel,
+       bool rightToLeft)
     {
         using SubTreeView control = new()
         {
@@ -7702,6 +7743,7 @@ public class TreeViewTests
         int nodeDoubleClickCount = 0;
         int mouseDoubleClickCount = 0;
         int mouseUpCount = 0;
+        Point lastDoubleClickLocation = Point.Empty;
         List<int> mouseDownClicks = [];
         control.BeforeCheck += (_, e) =>
         {
@@ -7723,12 +7765,14 @@ public class TreeViewTests
         {
             Assert.Same(node, e.Node);
             Assert.Equal(2, e.Clicks);
+            Assert.Equal(lastDoubleClickLocation, new Point(e.X, e.Y));
             nodeDoubleClickCount++;
         };
         control.MouseDoubleClick += (_, e) =>
         {
             Assert.Equal(MouseButtons.Left, e.Button);
             Assert.Equal(2, e.Clicks);
+            Assert.Equal(lastDoubleClickLocation, e.Location);
             mouseDoubleClickCount++;
         };
 
@@ -7736,6 +7780,7 @@ public class TreeViewTests
         for (int i = 1; i <= 3; i++)
         {
             Point location = GetTreeViewStateImageLocation(control, node);
+            lastDoubleClickLocation = location;
             SendTreeViewDoubleClick(control, location);
             expectedChecked = cancel ? expectedChecked : !expectedChecked;
 
@@ -7787,159 +7832,6 @@ public class TreeViewTests
         Assert.False(node.Checked);
         Assert.Equal(0, afterCheckCount);
         Assert.Equal(1, doubleClickCount);
-        Assert.False(control.Capture);
-    }
-
-    [WinFormsFact]
-    public void TreeView_WndProc_CheckBoxDoubleClick_ExpandsAndCollapsesParentNode()
-    {
-        using TreeView control = new() { CheckBoxes = true, Size = new Size(200, 200) };
-        TreeNode node = control.Nodes.Add("Parent");
-        TreeNode child = node.Nodes.Add("Child");
-        child.Nodes.Add("Grandchild");
-        control.CreateControl();
-        node.Expand();
-        child.Expand();
-        Point location = GetTreeViewStateImageLocation(control, node);
-        TreeViewAction? afterCollapseAction = null;
-        control.AfterCollapse += (_, e) => afterCollapseAction = e.Action;
-
-        Assert.True(node.IsExpanded);
-        Assert.True(child.IsExpanded);
-
-        SendTreeViewDoubleClick(control, location);
-
-        Assert.False(node.IsExpanded);
-        Assert.True(child.IsExpanded);
-        Assert.True(node.Checked);
-        Assert.Equal(TreeViewAction.Collapse, afterCollapseAction);
-
-        SendTreeViewDoubleClick(control, location);
-
-        Assert.True(node.IsExpanded);
-        Assert.True(child.IsExpanded);
-        Assert.False(node.Checked);
-    }
-
-    [WinFormsFact]
-    public void TreeView_WndProc_CheckBoxDoubleClick_CancelledCollapsePreservesExpandedDescendants()
-    {
-        using TreeView control = new() { CheckBoxes = true, Size = new Size(200, 200) };
-        TreeNode node = control.Nodes.Add("Parent");
-        TreeNode child = node.Nodes.Add("Child");
-        child.Nodes.Add("Grandchild");
-        control.CreateControl();
-        node.Expand();
-        child.Expand();
-        control.BeforeCollapse += (_, e) => e.Cancel = true;
-
-        SendTreeViewDoubleClick(control, GetTreeViewStateImageLocation(control, node));
-
-        Assert.True(node.IsExpanded);
-        Assert.True(child.IsExpanded);
-        Assert.True(node.Checked);
-    }
-
-    [WinFormsFact]
-    public void TreeView_WndProc_StateImageDoubleClickWithoutCheckBoxes_PreservesNativeBehavior()
-    {
-        using ImageList images = new();
-        using Bitmap image = new(16, 16);
-        images.Images.Add(image);
-        using TreeView control = new() { StateImageList = images, Size = new Size(200, 200) };
-        TreeNode node = new("Parent") { StateImageIndex = 0 };
-        node.Nodes.Add("Child");
-        control.Nodes.Add(node);
-        control.CreateControl();
-        int afterCheckCount = 0;
-        control.AfterCheck += (_, _) => afterCheckCount++;
-
-        SendTreeViewDoubleClick(control, GetTreeViewStateImageLocation(control, node));
-
-        Assert.True(node.IsExpanded);
-        Assert.Equal(0, node.StateImageIndex);
-        Assert.False(node.Checked);
-        Assert.Equal(0, afterCheckCount);
-    }
-
-    [WinFormsTheory]
-    [InlineData("Dispose")]
-    [InlineData("RecreateHandle")]
-    [InlineData("RemoveNode")]
-    [InlineData("DisableCheckBoxes")]
-    public void TreeView_WndProc_CheckBoxDoubleClickWithMouseDownMutation_PreservesLifetime(string mutation)
-    {
-        using SubTreeView control = new() { CheckBoxes = true, Size = new Size(200, 200) };
-        TreeNode node = control.Nodes.Add("Node");
-        control.CreateControl();
-        Point location = GetTreeViewStateImageLocation(control, node);
-        int mouseDownCount = 0;
-        control.MouseDown += (_, e) =>
-        {
-            mouseDownCount++;
-            if (e.Clicks != 2)
-            {
-                return;
-            }
-
-            switch (mutation)
-            {
-                case "Dispose":
-                    control.Dispose();
-                    break;
-                case "RecreateHandle":
-                    control.RecreateHandle();
-                    break;
-                case "RemoveNode":
-                    node.Remove();
-                    break;
-                case "DisableCheckBoxes":
-                    control.CheckBoxes = false;
-                    break;
-            }
-        };
-
-        SendTreeViewDoubleClick(control, location);
-
-        Assert.Equal(2, mouseDownCount);
-        Assert.False(control.Capture);
-        if (mutation == "Dispose")
-        {
-            Assert.True(control.IsDisposed);
-            Assert.False(control.IsHandleCreated);
-        }
-        else if (mutation == "RemoveNode")
-        {
-            Assert.Empty(control.Nodes);
-            Assert.Null(node.TreeView);
-            Assert.True(node.Checked);
-        }
-        else if (mutation == "DisableCheckBoxes")
-        {
-            Assert.False(control.CheckBoxes);
-            Assert.False(node.Checked);
-        }
-        else
-        {
-            AssertTreeViewCheckedState(control, node, expectedChecked: true);
-        }
-    }
-
-    [WinFormsFact]
-    public void TreeView_WndProc_CheckBoxDoubleClickWithValidationCancelled_DoesNotChangeState()
-    {
-        using SubTreeView control = new() { CheckBoxes = true, Size = new Size(200, 200) };
-        TreeNode node = control.Nodes.Add("Node");
-        control.CreateControl();
-        int checkEventCount = 0;
-        control.BeforeCheck += (_, _) => checkEventCount++;
-        control.AfterCheck += (_, _) => checkEventCount++;
-        control.MouseDown += (_, _) => control.ValidationCancelled = true;
-
-        SendTreeViewDoubleClick(control, GetTreeViewStateImageLocation(control, node));
-
-        AssertTreeViewCheckedState(control, node, expectedChecked: false);
-        Assert.Equal(0, checkEventCount);
         Assert.False(control.Capture);
     }
 

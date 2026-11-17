@@ -54,6 +54,8 @@ public partial class TreeView : Control
     private bool _rightToLeftLayout;
 
     private nint _mouseDownNode = 0; // ensures we fire nodeClick on the correct node
+    private bool _mouseDownOnStateImage;
+    private Stack<DoubleClickState>? _doubleClickStates;
 
     private const int TREEVIEWSTATE_hideSelection = 0x00000001;
     private const int TREEVIEWSTATE_labelEdit = 0x00000002;
@@ -73,6 +75,15 @@ public partial class TreeView : Control
     private const int TREEVIEWSTATE_stopResizeWindowMsgs = 0x00008000;
     private const int TREEVIEWSTATE_ignoreSelects = 0x00010000;
     private const int TREEVIEWSTATE_doubleBufferedPropertySet = 0x00020000;
+
+    private sealed class DoubleClickState
+    {
+        internal bool _doubleClickFired;
+        internal bool _mouseUpFired;
+        internal MouseButtons _downButton;
+        internal nint _mouseDownNode;
+        internal bool _mouseDownOnStateImage;
+    }
 
     // PERF: take all the bools and put them into a state variable
     private Collections.Specialized.BitVector32 _treeViewState; // see TREEVIEWSTATE_ constants above
@@ -2036,6 +2047,12 @@ public partial class TreeView : Control
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        _treeViewState[TREEVIEWSTATE_doubleclickFired] = false;
+        _treeViewState[TREEVIEWSTATE_mouseUpFired] = false;
+        _mouseDownOnStateImage = false;
+        _doubleClickStates?.Clear();
+        Capture = false;
+
         _selectedNode = SelectedNode;
 
         // Unfortunately, to avoid the native tree view leaking it's State Image List, we need to
@@ -2682,7 +2699,7 @@ public partial class TreeView : Control
         }
     }
 
-    private unsafe void WmMouseDown(ref Message m, MouseButtons button, int clicks)
+    private void WmMouseDown(ref Message m, MouseButtons button, int clicks)
     {
         // Required to put the TreeView in sane-state for painting proper highlighting of selectedNodes.
         // If the user shows the ContextMenu bu overriding the WndProc( ), then the treeView
@@ -3036,30 +3053,6 @@ public partial class TreeView : Control
                 case PInvoke.TVN_ENDLABELEDITW:
                     m.ResultInternal = TvnEndLabelEdit(*(NMTVDISPINFOW*)(nint)m.LParamInternal);
                     break;
-                case PInvoke.NM_DBLCLK:
-                    Point doubleClickPosition = PointToClient(Cursor.Position);
-                    TVHITTESTINFO doubleClickHitTest = new()
-                    {
-                        pt = doubleClickPosition
-                    };
-
-                    PInvokeCore.SendMessage(this, PInvoke.TVM_HITTEST, 0, ref doubleClickHitTest);
-                    if (CheckBoxes
-                        && (doubleClickHitTest.flags & TVHITTESTINFO_FLAGS.TVHT_ONITEMSTATEICON) != 0
-                        && NodeFromHandle(doubleClickHitTest.hItem) is TreeNode doubleClickNode)
-                    {
-                        // The native control toggles only the visual checkbox before sending NM_DBLCLK.
-                        // Restore the managed state and let the native expand/collapse notification path run.
-                        doubleClickNode.CheckedInternal = doubleClickNode.CheckedInternal;
-                        PInvokeCore.SendMessage(
-                            this,
-                            PInvoke.TVM_EXPAND,
-                            (WPARAM)(uint)NM_TREEVIEW_ACTION.TVE_TOGGLE,
-                            (LPARAM)doubleClickNode.Handle);
-                        m.ResultInternal = (LRESULT)1;
-                    }
-
-                    break;
                 case PInvoke.NM_CLICK:
                 case PInvoke.NM_RCLICK:
                     MouseButtons button = MouseButtons.Left;
@@ -3292,6 +3285,60 @@ public partial class TreeView : Control
                 WmNotify(ref m);
                 break;
             case PInvokeCore.WM_LBUTTONDBLCLK:
+                Point doubleClickPoint = PARAM.ToPoint(m.LParamInternal);
+                _doubleClickStates ??= new();
+                _doubleClickStates.Push(new DoubleClickState
+                {
+                    _doubleClickFired = _treeViewState[TREEVIEWSTATE_doubleclickFired],
+                    _mouseUpFired = _treeViewState[TREEVIEWSTATE_mouseUpFired],
+                    _downButton = _downButton,
+                    _mouseDownNode = _mouseDownNode,
+                    _mouseDownOnStateImage = _mouseDownOnStateImage
+                });
+                TVHITTESTINFO doubleClickHitTest = new()
+                {
+                    pt = doubleClickPoint
+                };
+
+                if (CheckBoxes
+                    && PInvokeCore.SendMessage(this, PInvoke.TVM_HITTEST, 0, ref doubleClickHitTest) != 0
+                    && (doubleClickHitTest.flags & TVHITTESTINFO_FLAGS.TVHT_ONITEMSTATEICON) != 0)
+                {
+                    // Set the mouse state before raising the event because user code can
+                    // pump the message queue and dispatch the matching mouse-up reentrantly.
+                    _treeViewState[TREEVIEWSTATE_doubleclickFired] = true;
+                    _treeViewState[TREEVIEWSTATE_mouseUpFired] = false;
+
+                    // Keep the managed mouse sequence and capture, but do not let the native
+                    // TreeView toggle the checkbox or perform its default double-click action.
+                    Capture = true;
+                    if (!IsHandleCreated
+                        || IsDisposed
+                        || Disposing
+                        || m.HWnd != Handle
+                        || !Capture
+                        || _doubleClickStates.Count == 0)
+                    {
+                        break;
+                    }
+
+                    OnMouseDown(new MouseEventArgs(MouseButtons.Left, 2, doubleClickPoint));
+                    if (CheckBoxes
+                        && _mouseDownNode != 0
+                        && (!_mouseDownOnStateImage || _mouseDownNode != doubleClickHitTest.hItem))
+                    {
+                        TreeNode? node = NodeFromHandle(doubleClickHitTest.hItem);
+                        bool eventReturn = TreeViewBeforeCheck(node, TreeViewAction.ByMouse);
+                        if (!eventReturn && node is not null)
+                        {
+                            node.CheckedInternal = !node.CheckedInternal;
+                            TreeViewAfterCheck(node, TreeViewAction.ByMouse);
+                        }
+                    }
+
+                    break;
+                }
+
                 WmMouseDown(ref m, MouseButtons.Left, 2);
 
                 if (!IsHandleCreated || IsDisposed || Disposing || m.HWnd != Handle)
@@ -3307,8 +3354,14 @@ public partial class TreeView : Control
 
                 // Make sure we get the mouse up if it happens outside the control.
                 Capture = true;
+
                 break;
             case PInvokeCore.WM_LBUTTONDOWN:
+                if (!Capture || _downButton == MouseButtons.Left)
+                {
+                    _treeViewState[TREEVIEWSTATE_doubleclickFired] = false;
+                }
+
                 try
                 {
                     _treeViewState[TREEVIEWSTATE_ignoreSelects] = true;
@@ -3327,6 +3380,7 @@ public partial class TreeView : Control
                 };
 
                 _mouseDownNode = PInvokeCore.SendMessage(this, PInvoke.TVM_HITTEST, 0, ref tvhip);
+                _mouseDownOnStateImage = (tvhip.flags & TVHITTESTINFO_FLAGS.TVHT_ONITEMSTATEICON) != 0;
 
                 // This gets around the TreeView behavior of temporarily moving the selection
                 // highlight to a node when the user clicks on its checkbox.
@@ -3357,6 +3411,10 @@ public partial class TreeView : Control
             case PInvokeCore.WM_LBUTTONUP:
             case PInvokeCore.WM_RBUTTONUP:
                 Point point = PARAM.ToPoint(m.LParamInternal);
+                DoubleClickState? doubleClickState = _doubleClickStates is { Count: > 0 }
+                    ? _doubleClickStates.Peek()
+                    : null;
+                HWND mouseUpHandle = (HWND)Handle;
 
                 TVHITTESTINFO tvhi = new()
                 {
@@ -3400,10 +3458,27 @@ public partial class TreeView : Control
 
                 _treeViewState[TREEVIEWSTATE_doubleclickFired] = false;
                 _treeViewState[TREEVIEWSTATE_mouseUpFired] = false;
-                Capture = false;
+                if (doubleClickState is null || (_doubleClickStates is not null && _doubleClickStates.Count == 1))
+                {
+                    if (IsHandleCreated && Handle == mouseUpHandle)
+                    {
+                        Capture = false;
+                    }
+                }
 
-                // Always clear our hit-tested node we cached on mouse down
-                _mouseDownNode = IntPtr.Zero;
+                if (doubleClickState is not null
+                    && _doubleClickStates is not null
+                    && _doubleClickStates.Count > 0
+                    && ReferenceEquals(_doubleClickStates.Peek(), doubleClickState))
+                {
+                    _doubleClickStates.Pop();
+                    _treeViewState[TREEVIEWSTATE_doubleclickFired] = doubleClickState._doubleClickFired;
+                    _treeViewState[TREEVIEWSTATE_mouseUpFired] = doubleClickState._mouseUpFired;
+                    _downButton = doubleClickState._downButton;
+                    _mouseDownNode = doubleClickState._mouseDownNode;
+                    _mouseDownOnStateImage = doubleClickState._mouseDownOnStateImage;
+                }
+
                 break;
             case PInvokeCore.WM_MBUTTONDBLCLK:
                 // Fire mouse up in the Wndproc.
@@ -3435,6 +3510,11 @@ public partial class TreeView : Control
                 Capture = true;
                 break;
             case PInvokeCore.WM_RBUTTONDOWN:
+                if (!Capture)
+                {
+                    _treeViewState[TREEVIEWSTATE_doubleclickFired] = false;
+                }
+
                 // Always Reset the MouseUpFired....
                 _treeViewState[TREEVIEWSTATE_mouseUpFired] = false;
 
