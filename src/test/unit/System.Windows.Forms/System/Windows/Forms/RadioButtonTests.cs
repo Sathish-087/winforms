@@ -83,6 +83,7 @@ public class RadioButtonTests : AbstractButtonBaseTests
             Image = image,
             Size = new Size(120, 30),
             Text = "radioButton4",
+            TextImageRelation = TextImageRelation.Overlay,
             VisualStylesMode = VisualStylesMode.Net11
         };
         using RadioButton controlWithoutImage = new()
@@ -109,6 +110,178 @@ public class RadioButtonTests : AbstractButtonBaseTests
         Assert.Equal(Color.Magenta.ToArgb(), bitmap.GetPixel(0, 0).ToArgb());
         Assert.True(Rendering.CheckBox.ToggleSwitchMetrics.GetContentBounds(control).Contains(switchBounds));
         Assert.Equal(controlWithoutImage.GetPreferredSize(Size.Empty), control.GetPreferredSize(Size.Empty));
+    }
+
+    [WinFormsTheory]
+    [InlineData(TextImageRelation.ImageAboveText, RightToLeft.No, false)]
+    [InlineData(TextImageRelation.TextAboveImage, RightToLeft.No, false)]
+    [InlineData(TextImageRelation.ImageBeforeText, RightToLeft.No, false)]
+    [InlineData(TextImageRelation.TextBeforeImage, RightToLeft.No, false)]
+    [InlineData(TextImageRelation.ImageBeforeText, RightToLeft.Yes, true)]
+    [InlineData(TextImageRelation.TextBeforeImage, RightToLeft.Yes, false)]
+    public void RadioButton_ToggleSwitch_Image_RespectsTextImageRelation(
+        TextImageRelation relation,
+        RightToLeft rightToLeft,
+        bool isChecked)
+    {
+        using Bitmap image = new(12, 8);
+        using (Graphics imageGraphics = Graphics.FromImage(image))
+        {
+            imageGraphics.Clear(Color.Magenta);
+        }
+
+        using RadioButton control = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = Color.White,
+            CheckAlign = ContentAlignment.MiddleLeft,
+            Checked = isChecked,
+            ForeColor = Color.Black,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            RightToLeft = rightToLeft,
+            Size = new Size(220, 70),
+            Text = "Toggle",
+            TextAlign = ContentAlignment.MiddleCenter,
+            TextImageRelation = relation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using Bitmap bitmap = new(control.Width, control.Height);
+
+        control.DrawToBitmap(bitmap, control.ClientRectangle);
+
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(control);
+        Rectangle switchBounds = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetSwitchBounds(
+            control,
+            control.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            control,
+            control.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle imageBounds = GetPixelBounds(bitmap, Color.Magenta, control.ClientRectangle);
+        Rectangle textBounds = GetPixelBounds(bitmap, Color.Black, textArea);
+
+        Assert.False(imageBounds.IsEmpty);
+        Assert.False(textBounds.IsEmpty);
+        Assert.Equal(image.Size, imageBounds.Size);
+        Assert.False(imageBounds.IntersectsWith(switchBounds));
+
+        TextImageRelation effectiveRelation = rightToLeft == RightToLeft.Yes
+            ? relation switch
+            {
+                TextImageRelation.ImageBeforeText => TextImageRelation.TextBeforeImage,
+                TextImageRelation.TextBeforeImage => TextImageRelation.ImageBeforeText,
+                _ => relation
+            }
+            : relation;
+
+        switch (effectiveRelation)
+        {
+            case TextImageRelation.ImageAboveText:
+                Assert.True(imageBounds.Bottom < textBounds.Top);
+                break;
+            case TextImageRelation.TextAboveImage:
+                Assert.True(textBounds.Bottom < imageBounds.Top);
+                break;
+            case TextImageRelation.ImageBeforeText:
+                Assert.True(imageBounds.Right < textBounds.Left);
+                break;
+            case TextImageRelation.TextBeforeImage:
+                Assert.True(textBounds.Right < imageBounds.Left);
+                break;
+            default:
+                Assert.Fail($"Unexpected relation: {effectiveRelation}");
+                break;
+        }
+    }
+
+    [WinFormsFact]
+    public void RadioButton_ToggleSwitch_Image_DisabledNonOverlay_RendersDisabledImage()
+    {
+        using Bitmap image = new(12, 8);
+        using (Graphics imageGraphics = Graphics.FromImage(image))
+        {
+            imageGraphics.Clear(Color.Magenta);
+        }
+
+        using RadioButton enabledControl = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = Color.White,
+            Image = image,
+            Size = new Size(220, 70),
+            Text = "Toggle",
+            TextImageRelation = TextImageRelation.ImageAboveText,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using RadioButton disabledControl = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = enabledControl.BackColor,
+            Enabled = false,
+            Image = image,
+            Size = enabledControl.Size,
+            Text = enabledControl.Text,
+            TextImageRelation = enabledControl.TextImageRelation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using Bitmap enabledBitmap = new(enabledControl.Width, enabledControl.Height);
+        using Bitmap disabledBitmap = new(disabledControl.Width, disabledControl.Height);
+
+        enabledControl.DrawToBitmap(enabledBitmap, enabledControl.ClientRectangle);
+        disabledControl.DrawToBitmap(disabledBitmap, disabledControl.ClientRectangle);
+
+        Rectangle imageBounds = GetPixelBounds(
+            enabledBitmap,
+            Color.Magenta,
+            enabledControl.ClientRectangle);
+
+        Assert.False(imageBounds.IsEmpty);
+        Assert.Equal(0, CountPixels(disabledBitmap, Color.Magenta));
+        Assert.True(CountPixelsNotEqual(disabledBitmap, Color.White, imageBounds) > 0);
+    }
+
+    [WinFormsFact]
+    public void RadioButton_ToggleSwitch_Image_ClipsOversizedImageToContentArea()
+    {
+        using Bitmap image = new(200, 80);
+        using (Graphics imageGraphics = Graphics.FromImage(image))
+        {
+            imageGraphics.Clear(Color.Magenta);
+        }
+
+        using RadioButton control = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = Color.White,
+            CheckAlign = ContentAlignment.MiddleLeft,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Size = new Size(120, 40),
+            Text = "Toggle",
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using Bitmap bitmap = new(control.Width, control.Height);
+
+        control.DrawToBitmap(bitmap, control.ClientRectangle);
+
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(control);
+        Rectangle switchBounds = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetSwitchBounds(
+            control,
+            control.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            control,
+            control.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle imageBounds = GetPixelBounds(bitmap, Color.Magenta, control.ClientRectangle);
+
+        Assert.False(imageBounds.IsEmpty);
+        Assert.True(imageBounds.Width < image.Width);
+        Assert.True(textArea.Contains(imageBounds));
+        Assert.False(imageBounds.IntersectsWith(switchBounds));
     }
 
     [WinFormsFact]
@@ -597,6 +770,54 @@ public class RadioButtonTests : AbstractButtonBaseTests
         }
 
         return count;
+    }
+
+    private static int CountPixelsNotEqual(Bitmap bitmap, Color color, Rectangle bounds)
+    {
+        bounds = Rectangle.Intersect(bounds, new Rectangle(Point.Empty, bitmap.Size));
+        int argb = color.ToArgb();
+        int count = 0;
+
+        for (int y = bounds.Top; y < bounds.Bottom; y++)
+        {
+            for (int x = bounds.Left; x < bounds.Right; x++)
+            {
+                if (bitmap.GetPixel(x, y).ToArgb() != argb)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private static Rectangle GetPixelBounds(Bitmap bitmap, Color color, Rectangle bounds)
+    {
+        bounds = Rectangle.Intersect(bounds, new Rectangle(Point.Empty, bitmap.Size));
+        int left = bounds.Right;
+        int top = bounds.Bottom;
+        int right = bounds.Left;
+        int bottom = bounds.Top;
+        int argb = color.ToArgb();
+
+        for (int y = bounds.Top; y < bounds.Bottom; y++)
+        {
+            for (int x = bounds.Left; x < bounds.Right; x++)
+            {
+                if (bitmap.GetPixel(x, y).ToArgb() == argb)
+                {
+                    left = Math.Min(left, x);
+                    top = Math.Min(top, y);
+                    right = Math.Max(right, x + 1);
+                    bottom = Math.Max(bottom, y + 1);
+                }
+            }
+        }
+
+        return left == bounds.Right
+            ? Rectangle.Empty
+            : Rectangle.FromLTRB(left, top, right, bottom);
     }
 
     [WinFormsFact]

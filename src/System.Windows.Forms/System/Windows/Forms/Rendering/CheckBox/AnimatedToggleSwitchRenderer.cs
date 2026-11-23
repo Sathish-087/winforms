@@ -3,6 +3,7 @@
 
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms.ButtonInternal;
 using System.Windows.Forms.Rendering.Animation;
 using System.Windows.Forms.Rendering.Button;
 
@@ -101,9 +102,39 @@ internal sealed class AnimatedToggleSwitchRenderer : AnimatedControlRenderer
             switchBounds,
             metrics,
             RtlTranslatedCheckAlign);
+        Image? image = Button.Image;
 
         PaintControlBackground(graphics);
-        RenderControlImage(graphics, Button.Image, Control.ClientRectangle);
+        if (image is not null && Button.TextImageRelation != TextImageRelation.Overlay)
+        {
+            ButtonBaseAdapter.LayoutOptions layoutOptions = ButtonBaseAdapter.CommonLayout(
+                clientRectangle: textBounds,
+                padding: Padding.Empty,
+                isDefault: false,
+                font: Button.Font,
+                text: Button.Text,
+                enabled: Control.Enabled,
+                textAlign: Button.TextAlign,
+                rtl: Control.RightToLeft);
+            layoutOptions.BorderSize = 0;
+            layoutOptions.PaddingSize = 0;
+            layoutOptions.MaxFocus = false;
+            layoutOptions.GrowBorderBy1PxWhenDefault = false;
+            layoutOptions.ImageSize = image.Size;
+            layoutOptions.ImageAlign = Button.ImageAlign;
+            layoutOptions.TextImageRelation = Button.TextImageRelation;
+            layoutOptions.GdiTextFormatFlags = textFormatFlags;
+            layoutOptions.DotNetOneButtonCompat = false;
+            layoutOptions.ClipImagesToClient = true;
+
+            ButtonBaseAdapter.LayoutData layout = layoutOptions.Layout();
+            textBounds = layout.TextBounds;
+            RenderControlImage(graphics, image, layout);
+        }
+        else
+        {
+            RenderControlImage(graphics, image, Control.ClientRectangle);
+        }
 
         if (contentBounds.Width <= 0 || contentBounds.Height <= 0)
         {
@@ -440,6 +471,46 @@ internal sealed class AnimatedToggleSwitchRenderer : AnimatedControlRenderer
            && PopupButtonColorMath.GetContrastRatio(
                thumbColor,
                ApplyInteractionShade(trackColor, 1f)) >= MinimumThumbContrastRatio;
+
+    private void RenderControlImage(
+        Graphics graphics,
+        Image? image,
+        ButtonBaseAdapter.LayoutData layout)
+    {
+        if (image is null || layout.ImageBounds.Width <= 0 || layout.ImageBounds.Height <= 0)
+        {
+            return;
+        }
+
+        ImageAnimator.UpdateFrames(image);
+
+        GraphicsState graphicsState = graphics.Save();
+        try
+        {
+            graphics.SetClip(layout.Client, CombineMode.Intersect);
+            if (layout.ImageBounds.Width < image.Width || layout.ImageBounds.Height < image.Height)
+            {
+                graphics.SetClip(layout.ImageBounds, CombineMode.Intersect);
+            }
+
+            if (Control.Enabled)
+            {
+                graphics.DrawImageUnscaled(image, layout.ImageBounds.Location);
+            }
+            else
+            {
+                ControlPaint.DrawImageDisabled(
+                    graphics,
+                    image,
+                    new Rectangle(layout.ImageBounds.Location, image.Size),
+                    unscaledImage: true);
+            }
+        }
+        finally
+        {
+            graphics.Restore(graphicsState);
+        }
+    }
 
     private void RenderControlImage(
         Graphics graphics,
