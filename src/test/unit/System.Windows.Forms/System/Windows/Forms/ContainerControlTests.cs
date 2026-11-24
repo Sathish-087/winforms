@@ -547,6 +547,131 @@ public class ContainerControlTests
         child.Bounds.Should().Be(expected);
     }
 
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContainerControl_Font_Set_ScalesHandlelessInheritedContainerOnce(bool createHandleOnResize)
+    {
+        using Font font = new(Control.DefaultFont.FontFamily, Control.DefaultFont.Size * 2);
+        using ContainerControl parent = new()
+        {
+            AutoScaleMode = AutoScaleMode.Font
+        };
+        using ContainerControl container = new()
+        {
+            Bounds = new Rectangle(40, 50, 100, 80),
+            Visible = false
+        };
+        using ContainerControl child = new()
+        {
+            Bounds = new Rectangle(20, 30, 40, 50),
+            Visible = false
+        };
+        parent.Controls.Add(container);
+        container.Controls.Add(child);
+        Assert.NotEqual(IntPtr.Zero, parent.Handle);
+        parent.PerformAutoScale();
+        Assert.False(container.IsHandleCreated);
+        Assert.False(child.IsHandleCreated);
+
+        SizeF dimensions = parent.CurrentAutoScaleDimensions;
+        Rectangle containerBounds = container.Bounds;
+        Rectangle childBounds = child.Bounds;
+        int fontChanged = 0;
+        container.Resize += (_, _) =>
+        {
+            if (createHandleOnResize)
+            {
+                _ = container.Handle;
+            }
+        };
+        container.FontChanged += (_, _) => fontChanged++;
+
+        parent.Font = font;
+
+        SizeF factor = ContainerControl.GetCurrentAutoScaleFactor(parent.CurrentAutoScaleDimensions, dimensions);
+        container.Bounds.Should().Be(new Rectangle(
+            (int)Math.Round(containerBounds.X * factor.Width),
+            (int)Math.Round(containerBounds.Y * factor.Height),
+            (int)Math.Round(containerBounds.Width * factor.Width),
+            (int)Math.Round(containerBounds.Height * factor.Height)));
+        child.Bounds.Should().Be(new Rectangle(
+            (int)Math.Round(childBounds.X * factor.Width),
+            (int)Math.Round(childBounds.Y * factor.Height),
+            (int)Math.Round(childBounds.Width * factor.Width),
+            (int)Math.Round(childBounds.Height * factor.Height)));
+        container.IsHandleCreated.Should().Be(createHandleOnResize);
+        fontChanged.Should().Be(1);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContainerControl_Font_Set_ScalesSplitContainerOnHiddenTabOnce(bool createHandleOnResize)
+    {
+        using Font font = new(Control.DefaultFont.FontFamily, Control.DefaultFont.Size * 2);
+        using Form form = new()
+        {
+            AutoScaleMode = AutoScaleMode.Font,
+            ClientSize = new Size(348, 211)
+        };
+        using TabControl tabControl = new() { Dock = DockStyle.Fill };
+        using TabPage firstPage = new("First");
+        using TabPage secondPage = new("Second");
+        using SplitContainer splitContainer = new()
+        {
+            Location = new Point(13, 11),
+            Size = new Size(221, 58),
+            SplitterDistance = 73
+        };
+        using Button child = new()
+        {
+            Location = new Point(23, 12),
+            Size = new Size(99, 34)
+        };
+        form.Controls.Add(tabControl);
+        tabControl.TabPages.Add(firstPage);
+        tabControl.TabPages.Add(secondPage);
+        secondPage.Controls.Add(splitContainer);
+        splitContainer.Panel2.Controls.Add(child);
+        _ = form.Handle;
+        form.PerformAutoScale();
+        Assert.False(splitContainer.IsHandleCreated);
+
+        SizeF dimensions = form.CurrentAutoScaleDimensions;
+        Rectangle splitBounds = splitContainer.Bounds;
+        Rectangle childBounds = child.Bounds;
+        splitContainer.Resize += (_, _) =>
+        {
+            if (createHandleOnResize)
+            {
+                _ = splitContainer.Handle;
+            }
+        };
+
+        form.Font = font;
+
+        SizeF factor = ContainerControl.GetCurrentAutoScaleFactor(form.CurrentAutoScaleDimensions, dimensions);
+        Rectangle expectedSplitBounds = new(
+            (int)Math.Round(splitBounds.X * factor.Width),
+            (int)Math.Round(splitBounds.Y * factor.Height),
+            (int)Math.Round(splitBounds.Width * factor.Width),
+            (int)Math.Round(splitBounds.Height * factor.Height));
+        Rectangle expectedChildBounds = new(
+            (int)Math.Round(childBounds.X * factor.Width),
+            (int)Math.Round(childBounds.Y * factor.Height),
+            (int)Math.Round(childBounds.Width * factor.Width),
+            (int)Math.Round(childBounds.Height * factor.Height));
+        splitContainer.Bounds.Should().Be(expectedSplitBounds);
+        child.Bounds.Should().Be(expectedChildBounds);
+        splitContainer.IsHandleCreated.Should().Be(createHandleOnResize);
+
+        tabControl.SelectedTab = secondPage;
+
+        splitContainer.Bounds.Should().Be(expectedSplitBounds);
+        child.Bounds.Should().Be(expectedChildBounds);
+    }
+
     [Theory]
     [InlineData(AutoScaleMode.Font, false)]
     [InlineData(AutoScaleMode.Font, true)]
