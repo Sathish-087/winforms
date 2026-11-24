@@ -13,6 +13,110 @@ public class CheckBoxToggleSwitchTests
 {
     private const int LeftMouseButtonKeyState = 0x0001;
 
+    internal static bool HasCompleteCaption(
+        ButtonBase control,
+        Bitmap rendered,
+        Rectangle textArea,
+        out string diagnostic)
+    {
+        using Bitmap reference = new(450, 100);
+        using (Graphics graphics = Graphics.FromImage(reference))
+        {
+            graphics.Clear(Color.White);
+            TextRenderer.DrawText(
+                graphics,
+                control.Text,
+                control.Font,
+                new Rectangle(Point.Empty, reference.Size),
+                Color.Black,
+                Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextFormatFlags(control));
+        }
+
+        static Rectangle GetBlackPixelBounds(Bitmap bitmap, Rectangle bounds)
+        {
+            int left = bounds.Right;
+            int top = bounds.Bottom;
+            int right = bounds.Left;
+            int bottom = bounds.Top;
+            for (int y = bounds.Top; y < bounds.Bottom; y++)
+            {
+                for (int x = bounds.Left; x < bounds.Right; x++)
+                {
+                    if (bitmap.GetPixel(x, y).ToArgb() == Color.Black.ToArgb())
+                    {
+                        left = Math.Min(left, x);
+                        top = Math.Min(top, y);
+                        right = Math.Max(right, x + 1);
+                        bottom = Math.Max(bottom, y + 1);
+                    }
+                }
+            }
+
+            return left == bounds.Right ? Rectangle.Empty : Rectangle.FromLTRB(left, top, right, bottom);
+        }
+
+        Rectangle actualBounds = GetBlackPixelBounds(rendered, Rectangle.Intersect(textArea, control.ClientRectangle));
+        Rectangle expectedBounds = GetBlackPixelBounds(reference, new Rectangle(Point.Empty, reference.Size));
+        if (actualBounds.IsEmpty || actualBounds.Size != expectedBounds.Size)
+        {
+            diagnostic = $"Actual glyph bounds {actualBounds}; expected {expectedBounds}.";
+            return false;
+        }
+
+        // Compare solid glyph pixels; antialiased edge colors vary between rendering targets.
+        for (int y = 0; y < expectedBounds.Height; y++)
+        {
+            for (int x = 0; x < expectedBounds.Width; x++)
+            {
+                bool actualPixel = rendered.GetPixel(actualBounds.X + x, actualBounds.Y + y).ToArgb()
+                    == Color.Black.ToArgb();
+                bool expectedPixel = reference.GetPixel(expectedBounds.X + x, expectedBounds.Y + y).ToArgb()
+                    == Color.Black.ToArgb();
+                if (actualPixel != expectedPixel)
+                {
+                    diagnostic = $"Glyph masks differ at ({x}, {y}) within {expectedBounds.Size}.";
+                    return false;
+                }
+            }
+        }
+
+        diagnostic = $"Complete glyph bounds matched: {actualBounds.Size}.";
+        return true;
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToggleSwitch_ImageBeforeText_WithSpace_RendersFullCaption(bool radioButton)
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using Bitmap image = new(16, 11);
+        using ButtonBase control = radioButton
+            ? new RadioButton { Appearance = Appearance.ToggleSwitch }
+            : new CheckBox { Appearance = Appearance.ToggleSwitch };
+        control.VisualStylesMode = VisualStylesMode.Net11;
+        control.BackColor = Color.White;
+        control.ForeColor = Color.Black;
+        control.Size = new Size(450, 80);
+        control.Image = image;
+        control.Text = "Toggle caption";
+        control.TextImageRelation = TextImageRelation.ImageBeforeText;
+        using Bitmap rendered = new(control.Width, control.Height);
+
+        control.DrawToBitmap(rendered, control.ClientRectangle);
+
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(control);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            control,
+            ContentAlignment.MiddleLeft,
+            metrics);
+        Assert.True(
+            HasCompleteCaption(control, rendered, textArea, out string diagnostic),
+            diagnostic);
+    }
+
     public static IEnumerable<object[]> RenderingMatrixData()
     {
         foreach (FlatStyle flatStyle in Enum.GetValues<FlatStyle>())

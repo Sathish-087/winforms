@@ -123,6 +123,7 @@ internal sealed class AnimatedToggleSwitchRenderer : AnimatedControlRenderer
             layoutOptions.ImageSize = image.Size;
             layoutOptions.ImageAlign = Button.ImageAlign;
             layoutOptions.TextImageRelation = Button.TextImageRelation;
+            layoutOptions.TextImageInset = 0;
             layoutOptions.GdiTextFormatFlags = textFormatFlags;
             layoutOptions.DotNetOneButtonCompat = false;
             layoutOptions.ClipImagesToClient = true;

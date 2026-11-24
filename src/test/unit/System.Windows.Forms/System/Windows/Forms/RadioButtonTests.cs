@@ -320,11 +320,12 @@ public class RadioButtonTests : AbstractButtonBaseTests
             control,
             control.RtlTranslatedCheckAlign,
             metrics);
-        Rectangle textPixels = GetPixelBounds(bitmap, Color.Black, textArea);
         Rectangle imagePixels = GetPixelBounds(bitmap, Color.Magenta, control.ClientRectangle);
 
         Assert.Equal(control.Font.Height, control.Height);
-        Assert.False(textPixels.IsEmpty);
+        Assert.True(
+            CheckBoxToggleSwitchTests.HasCompleteCaption(control, bitmap, textArea, out string diagnostic),
+            diagnostic);
         Assert.Equal(image.Size, imagePixels.Size);
     }
 
@@ -361,6 +362,60 @@ public class RadioButtonTests : AbstractButtonBaseTests
 
         Assert.Equal(preferredWithoutImage, preferredWithImage);
         Assert.True(image.Height > preferredWithImage.Height);
+    }
+
+    [WinFormsTheory]
+    [InlineData(TextImageRelation.ImageAboveText)]
+    [InlineData(TextImageRelation.TextAboveImage)]
+    [InlineData(TextImageRelation.ImageBeforeText)]
+    [InlineData(TextImageRelation.TextBeforeImage)]
+    public void RadioButton_ToggleSwitch_AutoSize_NonOverlayImage_ClipsOversizedContent(TextImageRelation relation)
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using Bitmap image = new(213, 148);
+        using (Graphics imageGraphics = Graphics.FromImage(image))
+        {
+            imageGraphics.Clear(Color.Magenta);
+        }
+
+        using RadioButton withImage = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            AutoSize = true,
+            BackColor = Color.White,
+            ForeColor = Color.Black,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "Toggle caption",
+            TextImageRelation = relation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using Form form = new();
+        form.Controls.Add(withImage);
+        form.CreateControl();
+        withImage.CreateControl();
+        Assert.Equal(withImage.GetPreferredSize(Size.Empty), withImage.Size);
+        using Bitmap rendered = new(withImage.Width, withImage.Height);
+        withImage.DrawToBitmap(rendered, withImage.ClientRectangle);
+        int imagePixels = CountPixels(rendered, Color.Magenta);
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(withImage);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            withImage,
+            withImage.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle visibleText = GetPixelBounds(rendered, Color.Black, textArea);
+        bool completeCaption = CheckBoxToggleSwitchTests.HasCompleteCaption(
+            withImage,
+            rendered,
+            textArea,
+            out string diagnostic);
+
+        Assert.Equal(0, imagePixels);
+        Assert.False(visibleText.IsEmpty, $"Relation {relation} should render caption pixels.");
+        bool expectedCompleteCaption = relation is TextImageRelation.ImageAboveText or TextImageRelation.TextAboveImage;
+        Assert.True(expectedCompleteCaption == completeCaption, diagnostic);
     }
 
     [WinFormsFact]
