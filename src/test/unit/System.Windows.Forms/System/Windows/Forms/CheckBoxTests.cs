@@ -1221,6 +1221,85 @@ public class CheckBoxTests : AbstractButtonBaseTests
         Assert.False(imageBounds.IntersectsWith(switchBounds));
     }
 
+    [WinFormsFact]
+    public void CheckBox_ToggleSwitch_ImageBeforeText_TightHeight_RendersCaption()
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using Bitmap image = new(16, 11);
+        using (Graphics imageGraphics = Graphics.FromImage(image))
+        {
+            imageGraphics.Clear(Color.Magenta);
+        }
+
+        using CheckBox box = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = Color.White,
+            CheckAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.Black,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "Toggle caption",
+            TextAlign = ContentAlignment.MiddleLeft,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            VisualStylesMode = VisualStylesMode.Net11,
+            Width = 450
+        };
+        box.Height = box.Font.Height;
+        using Bitmap bitmap = new(box.Width, box.Height);
+
+        box.DrawToBitmap(bitmap, box.ClientRectangle);
+
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(box);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            box,
+            box.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle textPixels = GetPixelBounds(bitmap, Color.Black, textArea);
+        Rectangle imagePixels = GetPixelBounds(bitmap, Color.Magenta, box.ClientRectangle);
+
+        Assert.Equal(box.Font.Height, box.Height);
+        Assert.False(textPixels.IsEmpty);
+        Assert.Equal(image.Size, imagePixels.Size);
+    }
+
+    [WinFormsTheory]
+    [InlineData(TextImageRelation.ImageAboveText)]
+    [InlineData(TextImageRelation.TextAboveImage)]
+    [InlineData(TextImageRelation.ImageBeforeText)]
+    [InlineData(TextImageRelation.TextBeforeImage)]
+    public void CheckBox_ToggleSwitch_AutoSize_NonOverlayImage_DoesNotAffectPreferredSize(
+        TextImageRelation relation)
+    {
+        using Bitmap image = new(213, 148);
+        using CheckBox withImage = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            AutoSize = true,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "Toggle caption",
+            TextImageRelation = relation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using CheckBox withoutImage = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            AutoSize = true,
+            Text = withImage.Text,
+            TextImageRelation = relation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+
+        Size preferredWithImage = withImage.GetPreferredSize(Size.Empty);
+        Size preferredWithoutImage = withoutImage.GetPreferredSize(Size.Empty);
+
+        Assert.Equal(preferredWithoutImage, preferredWithImage);
+        Assert.True(image.Height > preferredWithImage.Height);
+    }
+
     [WinFormsTheory]
     [InlineData(96)]
     [InlineData(120)]

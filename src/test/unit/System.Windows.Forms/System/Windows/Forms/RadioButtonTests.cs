@@ -285,6 +285,85 @@ public class RadioButtonTests : AbstractButtonBaseTests
     }
 
     [WinFormsFact]
+    public void RadioButton_ToggleSwitch_ImageBeforeText_TightHeight_RendersCaption()
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using Bitmap image = new(16, 11);
+        using (Graphics imageGraphics = Graphics.FromImage(image))
+        {
+            imageGraphics.Clear(Color.Magenta);
+        }
+
+        using RadioButton control = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = Color.White,
+            CheckAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.Black,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "Toggle caption",
+            TextAlign = ContentAlignment.MiddleLeft,
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            VisualStylesMode = VisualStylesMode.Net11,
+            Width = 450
+        };
+        control.Height = control.Font.Height;
+        using Bitmap bitmap = new(control.Width, control.Height);
+
+        control.DrawToBitmap(bitmap, control.ClientRectangle);
+
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(control);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            control,
+            control.RtlTranslatedCheckAlign,
+            metrics);
+        Rectangle textPixels = GetPixelBounds(bitmap, Color.Black, textArea);
+        Rectangle imagePixels = GetPixelBounds(bitmap, Color.Magenta, control.ClientRectangle);
+
+        Assert.Equal(control.Font.Height, control.Height);
+        Assert.False(textPixels.IsEmpty);
+        Assert.Equal(image.Size, imagePixels.Size);
+    }
+
+    [WinFormsTheory]
+    [InlineData(TextImageRelation.ImageAboveText)]
+    [InlineData(TextImageRelation.TextAboveImage)]
+    [InlineData(TextImageRelation.ImageBeforeText)]
+    [InlineData(TextImageRelation.TextBeforeImage)]
+    public void RadioButton_ToggleSwitch_AutoSize_NonOverlayImage_DoesNotAffectPreferredSize(
+        TextImageRelation relation)
+    {
+        using Bitmap image = new(213, 148);
+        using RadioButton withImage = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            AutoSize = true,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Text = "Toggle caption",
+            TextImageRelation = relation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using RadioButton withoutImage = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            AutoSize = true,
+            Text = withImage.Text,
+            TextImageRelation = relation,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+
+        Size preferredWithImage = withImage.GetPreferredSize(Size.Empty);
+        Size preferredWithoutImage = withoutImage.GetPreferredSize(Size.Empty);
+
+        Assert.Equal(preferredWithoutImage, preferredWithImage);
+        Assert.True(image.Height > preferredWithImage.Height);
+    }
+
+    [WinFormsFact]
     public void RadioButton_ToggleSwitch_RetainsMutualExclusion()
     {
         using Panel parent = new();

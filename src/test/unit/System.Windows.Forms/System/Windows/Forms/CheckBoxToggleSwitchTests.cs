@@ -97,6 +97,56 @@ public class CheckBoxToggleSwitchTests
     }
 
     [WinFormsFact]
+    public void CheckBox_ToggleSwitch_TightHeight_ZeroTextImageInset_IncreasesTextBounds()
+    {
+        using Bitmap image = new(16, 11);
+        using CheckBox checkBox = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            Image = image,
+            ImageAlign = ContentAlignment.MiddleCenter,
+            Size = new Size(450, Control.DefaultFont.Height),
+            Text = "Toggle caption",
+            TextImageRelation = TextImageRelation.ImageBeforeText,
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(checkBox);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            checkBox,
+            checkBox.RtlTranslatedCheckAlign,
+            metrics);
+        ButtonInternal.ButtonBaseAdapter.LayoutOptions layoutOptions =
+            ButtonInternal.ButtonBaseAdapter.CommonLayout(
+                textArea,
+                Padding.Empty,
+                isDefault: false,
+                checkBox.Font,
+                checkBox.Text,
+                checkBox.Enabled,
+                checkBox.TextAlign,
+                checkBox.RightToLeft);
+        layoutOptions.BorderSize = 0;
+        layoutOptions.PaddingSize = 0;
+        layoutOptions.MaxFocus = false;
+        layoutOptions.GrowBorderBy1PxWhenDefault = false;
+        layoutOptions.ImageSize = image.Size;
+        layoutOptions.ImageAlign = checkBox.ImageAlign;
+        layoutOptions.TextImageRelation = checkBox.TextImageRelation;
+        layoutOptions.GdiTextFormatFlags =
+            Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextFormatFlags(checkBox);
+        layoutOptions.DotNetOneButtonCompat = false;
+        layoutOptions.ClipImagesToClient = true;
+
+        layoutOptions.TextImageInset = 2;
+        int defaultTextHeight = layoutOptions.Layout().TextBounds.Height;
+        layoutOptions.TextImageInset = 0;
+        int zeroInsetTextHeight = layoutOptions.Layout().TextBounds.Height;
+
+        Assert.True(zeroInsetTextHeight > defaultTextHeight);
+    }
+
+    [WinFormsFact]
     public void CheckBox_ToggleSwitch_LargeFont_ReservesTenPercentHoverGrowth()
     {
         using Font font = new(Control.DefaultFont.FontFamily, 72f);
