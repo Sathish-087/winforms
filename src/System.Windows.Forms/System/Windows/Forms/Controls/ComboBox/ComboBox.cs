@@ -1553,7 +1553,7 @@ public partial class ComboBox : ListControl
                 {
                     if (PreProcessControlMessage(ref m) != PreProcessControlState.MessageProcessed)
                     {
-                        if (ProcessKeyMessage(ref m))
+                        if (ProcessKeyMessageWithKioskMode(ref m))
                         {
                             return;
                         }

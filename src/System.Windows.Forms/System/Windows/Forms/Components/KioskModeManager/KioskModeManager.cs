@@ -72,6 +72,12 @@ public class KioskModeManager : Component, ISupportInitialize
     private bool _pendingFullScreen;
     private bool _initializing;
     private bool _isCursorHidden;
+    private bool _escapeKeyHandled;
+    private bool _escapeKeyDeferred;
+    private Dictionary<HWND, int>? _escapeKeyCharactersPending;
+    private Control? _escapeKeyTarget;
+    private HWND _escapeKeyHwnd;
+    private LPARAM _escapeKeyLParam;
     private readonly List<Control> _parentChain = [];
     private KioskModeMessageFilter? _messageFilter;
     private KioskModeFormObserver? _formObserver;
@@ -256,18 +262,19 @@ public class KioskModeManager : Component, ISupportInitialize
     }
 
     /// <summary>
-    ///  Gets or sets a value indicating whether pressing Escape exits
+    ///  Gets or sets a value indicating whether an unhandled Escape key exits
     ///  fullscreen mode.
     /// </summary>
     /// <value>
     ///  <see langword="true"/> to exit fullscreen mode when Escape is pressed
-    ///  without modifiers; otherwise, <see langword="false"/>. The default is
-    ///  <see langword="true"/>.
+    ///  without modifiers and is not handled by the focused control; otherwise,
+    ///  <see langword="false"/>. The default is <see langword="true"/>.
     /// </value>
     /// <remarks>
     ///  <para>
     ///   Like <see cref="ToggleFullScreenKeys"/>, Escape is evaluated only while the
-    ///   managed form or one of its child controls has input focus.
+    ///   managed form or one of its child controls has input focus. The control gets
+    ///   the opportunity to handle the key before fullscreen mode is exited.
     ///  </para>
     /// </remarks>
     [SRCategory(nameof(SR.CatBehavior))]
@@ -641,6 +648,9 @@ public class KioskModeManager : Component, ISupportInitialize
         _formObserver?.Detach();
         StopMousePointerAutoHideTimer();
         ShowMousePointerIfHidden();
+        ResetEscapeKeyState();
+        ResetEscapeKeyCharacterState();
+        _targetForm?.UnregisterKioskModeManager(this);
         _targetForm = null;
     }
 
@@ -697,7 +707,10 @@ public class KioskModeManager : Component, ISupportInitialize
         Form? targetForm = _containerControl as Form ?? _containerControl?.FindForm();
         if (!ReferenceEquals(_targetForm, targetForm))
         {
+            ResetEscapeKeyState();
+            _targetForm?.UnregisterKioskModeManager(this);
             _targetForm = targetForm;
+            _targetForm?.RegisterKioskModeManager(this);
             UpdateFormObserver();
         }
 
@@ -815,14 +828,96 @@ public class KioskModeManager : Component, ISupportInitialize
             return;
         }
 
+        if (keyData == Keys.Escape)
+        {
+            return;
+        }
+
         if (_toggleFullScreenKeys != Keys.None && keyData == _toggleFullScreenKeys)
         {
             ToggleFullScreen();
         }
-        else if (keyData == Keys.Escape && _escapeExitsFullScreen && _isFullScreen)
+    }
+
+    private bool CanProcessEscape
+        => _escapeKeyHandled || _toggleFullScreenKeys == Keys.Escape || (_escapeExitsFullScreen && _isFullScreen);
+
+    private void ResetEscapeKeyState()
+    {
+        _escapeKeyHandled = false;
+        _escapeKeyDeferred = false;
+        _escapeKeyTarget = null;
+        _escapeKeyHwnd = default;
+        _escapeKeyLParam = default;
+    }
+
+    private void ResetEscapeKeyCharacterState()
+    {
+        _escapeKeyCharactersPending?.Clear();
+    }
+
+    internal bool DeferEscapeKey()
+    {
+        if (!CanProcessEscape || _escapeKeyTarget is null)
+        {
+            return false;
+        }
+
+        _escapeKeyDeferred = true;
+        return true;
+    }
+
+    internal bool CompleteDeferredEscapeKey(Control target, ref Message message, bool handled)
+    {
+        if (!_escapeKeyDeferred
+            || !ReferenceEquals(target, _escapeKeyTarget)
+            || message.HWND != _escapeKeyHwnd
+            || message.LParamInternal != _escapeKeyLParam)
+        {
+            return false;
+        }
+
+        _escapeKeyDeferred = false;
+        if (handled || !ProcessEscapeKey())
+        {
+            return false;
+        }
+
+        Dictionary<HWND, int> escapeKeyCharactersPending = _escapeKeyCharactersPending ??= [];
+        escapeKeyCharactersPending.TryGetValue(_escapeKeyHwnd, out int pendingCount);
+        escapeKeyCharactersPending[_escapeKeyHwnd] = pendingCount + 1;
+        return true;
+    }
+
+    internal bool ProcessEscapeKey()
+    {
+        if (_escapeKeyHandled)
+        {
+            return true;
+        }
+
+        bool toggleFullScreen = _toggleFullScreenKeys == Keys.Escape;
+        if (!toggleFullScreen && (!_escapeExitsFullScreen || !_isFullScreen))
+        {
+            return false;
+        }
+
+        if (((nuint)(nint)_escapeKeyLParam & (1u << 30)) != 0)
+        {
+            return true;
+        }
+
+        _escapeKeyHandled = true;
+        if (toggleFullScreen)
+        {
+            ToggleFullScreen();
+        }
+        else
         {
             ExitFullScreen();
         }
+
+        return true;
     }
 
     private void ProcessMouseActivity()
@@ -926,6 +1021,23 @@ public class KioskModeManager : Component, ISupportInitialize
             return false;
         }
 
+        if (message.MsgInternal == PInvokeCore.WM_CHAR
+            && message.WParamInternal == (WPARAM)(uint)Keys.Escape
+            && _escapeKeyCharactersPending is { } escapeKeyCharactersPending
+            && escapeKeyCharactersPending.TryGetValue(message.HWND, out int pendingCount))
+        {
+            if (pendingCount == 1)
+            {
+                escapeKeyCharactersPending.Remove(message.HWND);
+            }
+            else
+            {
+                escapeKeyCharactersPending[message.HWND] = pendingCount - 1;
+            }
+
+            return true;
+        }
+
         if (_targetForm is null || _targetForm.IsDisposed)
         {
             ResolveTargetForm();
@@ -946,7 +1058,27 @@ public class KioskModeManager : Component, ISupportInitialize
             bool isRepeat = ((nuint)(nint)message.LParamInternal & (1u << 30)) != 0;
             Keys keyData = ((Keys)(nint)message.WParamInternal & Keys.KeyCode)
                 | (Control.ModifierKeys & Keys.Modifiers);
+            if ((keyData & Keys.KeyCode) == Keys.Escape)
+            {
+                _escapeKeyTarget = Control.FromChildHandle(message.HWND);
+                _escapeKeyHwnd = message.HWND;
+                _escapeKeyLParam = message.LParamInternal;
+                _escapeKeyDeferred = false;
+                if (!isRepeat)
+                {
+                    _escapeKeyHandled = false;
+                }
+            }
+
             ProcessKeyboardActivity(keyData, isRepeat);
+        }
+        else if (message.MsgInternal == PInvokeCore.WM_KEYUP
+            || message.MsgInternal == PInvokeCore.WM_SYSKEYUP)
+        {
+            if (((Keys)(nint)message.WParamInternal & Keys.KeyCode) == Keys.Escape)
+            {
+                ResetEscapeKeyState();
+            }
         }
         else if (message.MsgInternal >= PInvokeCore.WM_MOUSEFIRST
             && message.MsgInternal <= PInvokeCore.WM_MOUSELAST)

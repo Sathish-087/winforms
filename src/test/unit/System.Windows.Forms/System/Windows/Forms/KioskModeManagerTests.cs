@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 #nullable disable
@@ -856,6 +856,584 @@ public class KioskModeManagerTests
     }
 
     [WinFormsFact]
+    public void KioskModeManager_ProcessMessage_EscapeHandledByInputControl_DoesNotExitFullScreen()
+    {
+        using SubForm form = new();
+        using EscapeInputControl control = new();
+        form.Controls.Add(control);
+        form.Show();
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true
+        };
+        int escapeHandled = 0;
+        control.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                escapeHandled++;
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        Message filterMessage = Message.Create(control.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 0);
+        manager.TestAccessor.Dynamic.ProcessMessage(filterMessage);
+
+        Assert.True(manager.FullScreen);
+        Message message = Message.Create(control.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 0);
+        Assert.Equal(
+            PreProcessControlState.MessageNeeded,
+            Control.PreProcessControlMessageInternal(control, ref message));
+        control.DispatchMessage(ref message);
+
+        Assert.Equal(1, escapeHandled);
+        message = Message.Create(control.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1 << 30);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        Assert.Equal(PreProcessControlState.MessageNeeded, Control.PreProcessControlMessageInternal(control, ref message));
+        control.DispatchMessage(ref message);
+        Assert.Equal(2, escapeHandled);
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessDialogKey_EscapeToggleKeyTogglesAfterKeyRouting()
+    {
+        using SubForm form = new();
+        TestButtonControl cancelButton = new();
+        form.CancelButton = cancelButton;
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            ToggleFullScreenKeys = Keys.Escape
+        };
+
+        Message message = Message.Create(form.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 0);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        Assert.False(manager.FullScreen);
+
+        Assert.NotEqual(PreProcessControlState.MessageProcessed, Control.PreProcessControlMessageInternal(form, ref message));
+        PInvokeCore.SendMessage(form, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)0);
+        Assert.True(manager.FullScreen);
+
+        message = Message.Create(form.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1 << 30);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        Assert.NotEqual(PreProcessControlState.MessageProcessed, Control.PreProcessControlMessageInternal(form, ref message));
+        PInvokeCore.SendMessage(form, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)(1 << 30));
+        Assert.True(manager.FullScreen);
+        Assert.Equal(0, cancelButton.ClickCount);
+
+        message = Message.Create(form.Handle, (int)PInvokeCore.WM_KEYUP, (nint)Keys.Escape, 0);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        message = Message.Create(form.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 0);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+
+        Assert.NotEqual(PreProcessControlState.MessageProcessed, Control.PreProcessControlMessageInternal(form, ref message));
+        PInvokeCore.SendMessage(form, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)0);
+        Assert.False(manager.FullScreen);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_ProcessMessage_EscapeDuringDataGridViewEdit_CancelsEditWithoutExitingFullScreen(
+        bool withCancelButton)
+    {
+        using SubForm form = new();
+        using DataGridView grid = new();
+        form.Controls.Add(grid);
+        form.CreateControl();
+        form.Show();
+        grid.Columns.Add("Name", "Name");
+        grid.Rows.Add("Alice");
+        grid.CurrentCell = grid[0, 0];
+        Assert.True(grid.BeginEdit(true));
+        Assert.IsType<DataGridViewTextBoxEditingControl>(grid.EditingControl);
+        TestButtonControl cancelButton = new();
+        if (withCancelButton)
+        {
+            form.CancelButton = cancelButton;
+        }
+
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true
+        };
+        grid.EditingControl.Text = "Changed";
+        Message message = Message.Create(grid.EditingControl.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+
+        PreProcessControlState state = Control.PreProcessControlMessageInternal(grid.EditingControl, ref message);
+        if (state != PreProcessControlState.MessageProcessed)
+        {
+            PInvokeCore.SendMessage(grid.EditingControl, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+        }
+
+        Assert.False(grid.IsCurrentCellInEditMode);
+        Assert.Equal("Alice", grid[0, 0].Value);
+        Assert.True(manager.FullScreen);
+        Assert.Equal(0, cancelButton.ClickCount);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_ProcessMessage_DataGridViewEscapeDisabled_PreservesDialogRouting(bool withCancelButton)
+    {
+        using SubForm form = new();
+        using DataGridView grid = new();
+        form.Controls.Add(grid);
+        form.Show();
+        grid.Columns.Add("Name", "Name");
+        grid.Rows.Add("Alice");
+        grid.CurrentCell = grid[0, 0];
+        Assert.True(grid.BeginEdit(true));
+        TestButtonControl cancelButton = new();
+        if (withCancelButton)
+        {
+            form.CancelButton = cancelButton;
+        }
+
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            EscapeExitsFullScreen = false,
+            FullScreen = true
+        };
+        Control editor = grid.EditingControl;
+        editor.Text = "Changed";
+        try
+        {
+            Message message = Message.Create(editor.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+            manager.TestAccessor.Dynamic.ProcessMessage(message);
+            if (Control.PreProcessControlMessageInternal(editor, ref message) != PreProcessControlState.MessageProcessed)
+            {
+                PInvokeCore.SendMessage(editor, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+            }
+
+            Assert.True(manager.FullScreen);
+            Assert.Equal(withCancelButton ? 1 : 0, cancelButton.ClickCount);
+            Assert.Equal(withCancelButton, grid.IsCurrentCellInEditMode);
+        }
+        finally
+        {
+            grid.CancelEdit();
+            grid.EndEdit();
+        }
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessMessage_EscapeClosesComboBoxDropDownWithoutExitingFullScreen()
+    {
+        using SubForm form = new();
+        using EscapeComboBox comboBox = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+        comboBox.Items.Add("One");
+        comboBox.SelectedIndex = 0;
+        form.Controls.Add(comboBox);
+        form.Show();
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true
+        };
+        comboBox.Focus();
+        comboBox.DroppedDown = true;
+        Message message = Message.Create(comboBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+
+        PreProcessControlState state = Control.PreProcessControlMessageInternal(comboBox, ref message);
+        comboBox.DispatchMessage(ref message);
+
+        Assert.Equal(PreProcessControlState.MessageNeeded, state);
+        Assert.False(comboBox.DroppedDown);
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_ProcessMessage_RepeatedEscapeAfterComboBoxCloses_DoesNotExitFullScreen(bool toggleEscape)
+    {
+        using SubForm form = new();
+        using EscapeComboBox comboBox = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+        comboBox.Items.Add("One");
+        comboBox.SelectedIndex = 0;
+        form.Controls.Add(comboBox);
+        form.Show();
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true,
+            ToggleFullScreenKeys = toggleEscape ? Keys.Escape : Keys.F11
+        };
+        comboBox.Focus();
+        comboBox.DroppedDown = true;
+
+        Message message = Message.Create(comboBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        Assert.Equal(PreProcessControlState.MessageNeeded, Control.PreProcessControlMessageInternal(comboBox, ref message));
+        comboBox.DispatchMessage(ref message);
+        Assert.False(comboBox.DroppedDown);
+
+        message = Message.Create(comboBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1 << 30);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        if (Control.PreProcessControlMessageInternal(comboBox, ref message) != PreProcessControlState.MessageProcessed)
+        {
+            comboBox.DispatchMessage(ref message);
+        }
+
+        Assert.True(manager.FullScreen);
+
+        message = Message.Create(comboBox.Handle, (int)PInvokeCore.WM_KEYUP, (nint)Keys.Escape, 0);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        message = Message.Create(comboBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        PreProcessControlState state = Control.PreProcessControlMessageInternal(comboBox, ref message);
+        if (state != PreProcessControlState.MessageProcessed)
+        {
+            comboBox.DispatchMessage(ref message);
+        }
+
+        Assert.False(manager.TestAccessor.Dynamic._escapeKeyDeferred);
+        Assert.False(manager.FullScreen);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_ProcessMessage_DataGridViewOverrideHandlesEscape(bool withCancelButton)
+    {
+        using SubForm form = new();
+        using EscapeDataGridView grid = new();
+        form.Controls.Add(grid);
+        form.Show();
+        grid.Columns.Add("Name", "Name");
+        grid.Rows.Add("Alice");
+        grid.CurrentCell = grid[0, 0];
+        Assert.True(grid.BeginEdit(true));
+        if (withCancelButton)
+        {
+            form.CancelButton = new TestButtonControl();
+        }
+
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true,
+            ToggleFullScreenKeys = Keys.Escape
+        };
+        Control editor = grid.EditingControl;
+        editor.Text = "Changed";
+        try
+        {
+            Message message = Message.Create(editor.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+            manager.TestAccessor.Dynamic.ProcessMessage(message);
+            if (Control.PreProcessControlMessageInternal(editor, ref message) != PreProcessControlState.MessageProcessed)
+            {
+                PInvokeCore.SendMessage(editor, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+            }
+
+            Assert.True(grid.EscapeHandled);
+            Assert.True(grid.IsCurrentCellInEditMode);
+            Assert.Equal("Changed", editor.Text);
+            Assert.True(manager.FullScreen);
+        }
+        finally
+        {
+            grid.CancelEdit();
+            grid.EndEdit();
+        }
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_ProcessMessage_FormKeyPreviewHandlesEscape(bool handleEscape)
+    {
+        using SubForm form = new() { KeyPreview = true };
+        using TextBox textBox = new();
+        form.Controls.Add(textBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        int received = 0;
+        form.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                received++;
+                e.Handled = handleEscape;
+                e.SuppressKeyPress = handleEscape;
+            }
+        };
+
+        Message message = Message.Create(textBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        if (Control.PreProcessControlMessageInternal(textBox, ref message) != PreProcessControlState.MessageProcessed)
+        {
+            PInvokeCore.SendMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+        }
+
+        Assert.Equal(1, received);
+        Assert.Equal(handleEscape, manager.FullScreen);
+        if (handleEscape)
+        {
+            message = Message.Create(textBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1 << 30);
+            manager.TestAccessor.Dynamic.ProcessMessage(message);
+            if (Control.PreProcessControlMessageInternal(textBox, ref message) != PreProcessControlState.MessageProcessed)
+            {
+                PInvokeCore.SendMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)(1 << 30));
+            }
+
+            Assert.Equal(2, received);
+            Assert.True(manager.FullScreen);
+        }
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessMessage_OverrideHandlesEscapeAfterBase()
+    {
+        using SubForm form = new() { KeyPreview = true };
+        using EscapeTextBox textBox = new();
+        form.Controls.Add(textBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Message message = Message.Create(textBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        if (Control.PreProcessControlMessageInternal(textBox, ref message) != PreProcessControlState.MessageProcessed)
+        {
+            PInvokeCore.SendMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+        }
+
+        Assert.True(textBox.EscapeHandled);
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessMessage_ProcessDialogKeyOverrideHandlesEscapeAfterBase()
+    {
+        using EscapeDialogKeyForm form = new();
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+
+        Message message = Message.Create(form.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        PreProcessControlState state = Control.PreProcessControlMessageInternal(form, ref message);
+
+        Assert.Equal(PreProcessControlState.MessageProcessed, state);
+        Assert.True(form.EscapeHandled);
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public unsafe void KioskModeManager_ProcessMessage_DeferredEscape_PreservesUnrelatedCharacterMessage(bool comboBox)
+    {
+        using SubForm form = new() { KeyPreview = true };
+        using Control control = comboBox ? new ComboBox() : new TextBox();
+        using TextBox secondControl = new();
+        form.Controls.Add(control);
+        form.Controls.Add(secondControl);
+        form.Show();
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true,
+            ToggleFullScreenKeys = Keys.Escape
+        };
+        nint target = comboBox ? ((ComboBox)control).TestAccessor.Dynamic._childEdit.Handle : control.Handle;
+        nint secondTarget = secondControl.Handle;
+        Message message = Message.Create(target, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        Assert.NotEqual(PreProcessControlState.MessageProcessed, Control.PreProcessControlMessageInternal(control, ref message));
+        MSG nativeMessage = message.ToMSG();
+        Assert.True(PInvoke.TranslateMessage(nativeMessage));
+        Assert.True(PInvokeCore.PostMessage((HWND)target, PInvokeCore.WM_CHAR, (WPARAM)'x', default));
+        PInvokeCore.SendMessage((HWND)target, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+        message = Message.Create(secondTarget, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        Assert.NotEqual(
+            PreProcessControlState.MessageProcessed,
+            Control.PreProcessControlMessageInternal(secondControl, ref message));
+        nativeMessage = message.ToMSG();
+        Assert.True(PInvoke.TranslateMessage(nativeMessage));
+        PInvokeCore.SendMessage((HWND)secondTarget, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+        MSG pending = default;
+        bool hasUnrelatedCharacter = false;
+        bool firstEscapeCharacterSuppressed = false;
+        bool secondEscapeCharacterSuppressed = false;
+        while (PInvokeCore.PeekMessage(
+            &pending, default, PInvokeCore.WM_CHAR, PInvokeCore.WM_CHAR, PEEK_MESSAGE_REMOVE_TYPE.PM_REMOVE))
+        {
+            if (pending.hwnd == (HWND)target && pending.wParam == (WPARAM)(uint)Keys.Escape)
+            {
+                Message characterMessage = Message.Create(
+                    (nint)pending.hwnd,
+                    (int)PInvokeCore.WM_CHAR,
+                    (nint)pending.wParam,
+                    (nint)pending.lParam);
+                firstEscapeCharacterSuppressed = manager.TestAccessor.Dynamic.ProcessMessage(characterMessage);
+            }
+            else if (pending.hwnd == (HWND)secondTarget && pending.wParam == (WPARAM)(uint)Keys.Escape)
+            {
+                Message characterMessage = Message.Create(
+                    (nint)pending.hwnd,
+                    (int)PInvokeCore.WM_CHAR,
+                    (nint)pending.wParam,
+                    (nint)pending.lParam);
+                secondEscapeCharacterSuppressed = manager.TestAccessor.Dynamic.ProcessMessage(characterMessage);
+            }
+            else
+            {
+                Message characterMessage = Message.Create(
+                    (nint)pending.hwnd,
+                    (int)PInvokeCore.WM_CHAR,
+                    (nint)pending.wParam,
+                    (nint)pending.lParam);
+                hasUnrelatedCharacter |= pending.hwnd == (HWND)target
+                    && pending.wParam == (WPARAM)'x'
+                    && !manager.TestAccessor.Dynamic.ProcessMessage(characterMessage);
+            }
+        }
+
+        Assert.True(manager.FullScreen);
+        Assert.True(hasUnrelatedCharacter);
+        Assert.True(firstEscapeCharacterSuppressed, "The first Escape character should be suppressed.");
+        Assert.True(secondEscapeCharacterSuppressed, "The second Escape character should be suppressed.");
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_ProcessMessage_ComboBoxEditKeyPreview(bool handleEscape)
+    {
+        using SubForm form = new() { KeyPreview = true };
+        using ComboBox comboBox = new() { DropDownStyle = ComboBoxStyle.DropDown };
+        form.Controls.Add(comboBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        bool received = false;
+        form.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                received = true;
+                e.Handled = handleEscape;
+            }
+        };
+
+        nint editorHandle = comboBox.TestAccessor.Dynamic._childEdit.Handle;
+        Message message = Message.Create(editorHandle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+        if (Control.PreProcessControlMessageInternal(comboBox, ref message) != PreProcessControlState.MessageProcessed)
+        {
+            PInvokeCore.SendMessage((HWND)editorHandle, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+        }
+
+        Assert.True(received);
+        Assert.Equal(handleEscape, manager.FullScreen);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessMessage_UnhandledEscape_ExitsWithoutClickingCancelButton()
+    {
+        using SubForm form = new();
+        using TextBox textBox = new();
+        form.Controls.Add(textBox);
+        TestButtonControl cancelButton = new();
+        form.CancelButton = cancelButton;
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true
+        };
+        Message message = Message.Create(textBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+        manager.TestAccessor.Dynamic.ProcessMessage(message);
+
+        PreProcessControlState state = Control.PreProcessControlMessageInternal(textBox, ref message);
+
+        Assert.Equal(PreProcessControlState.MessageProcessed, state);
+        Assert.False(manager.FullScreen);
+        Assert.Equal(0, cancelButton.ClickCount);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessDialogKey_EscapeExitsBeforeClickingCancelButton()
+    {
+        using SubForm form = new();
+        TestButtonControl cancelButton = new();
+        form.CancelButton = cancelButton;
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            FullScreen = true
+        };
+
+        bool processed = form.ProcessDialogKey(Keys.Escape);
+
+        Assert.True(processed);
+        Assert.False(manager.FullScreen);
+        Assert.Equal(0, cancelButton.ClickCount);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ProcessDialogKey_EscapeExitsDisabled_ClicksCancelButton()
+    {
+        using SubForm form = new();
+        TestButtonControl cancelButton = new();
+        form.CancelButton = cancelButton;
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            EscapeExitsFullScreen = false,
+            FullScreen = true
+        };
+
+        bool processed = form.ProcessDialogKey(Keys.Escape);
+
+        Assert.True(processed);
+        Assert.True(manager.FullScreen);
+        Assert.Equal(1, cancelButton.ClickCount);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_ContainerControl_Reparented_UnregistersFromPreviousForm()
+    {
+        using SubForm firstForm = new();
+        using SubForm secondForm = new();
+        using UserControl container = new();
+        firstForm.Controls.Add(container);
+        using KioskModeManager manager = new()
+        {
+            ContainerControl = container,
+            ToggleFullScreenKeys = Keys.Escape
+        };
+
+        secondForm.Controls.Add(container);
+
+        Assert.False(firstForm.ProcessDialogKey(Keys.Escape));
+        Assert.True(secondForm.ProcessDialogKey(Keys.Escape));
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Dispose_UnregistersFromForm()
+    {
+        using SubForm form = new();
+        KioskModeManager manager = new()
+        {
+            ContainerControl = form,
+            ToggleFullScreenKeys = Keys.Escape
+        };
+        manager.Dispose();
+
+        Assert.False(form.ProcessDialogKey(Keys.Escape));
+        Assert.False(manager.FullScreen);
+    }
+
+    [WinFormsFact]
     public void KioskModeManager_ProcessMessage_MouseMove_ShowsHiddenMousePointer()
     {
         using Form form = new();
@@ -887,6 +1465,91 @@ public class KioskModeManagerTests
 
         public new void OnFullScreenChanged(EventArgs e)
             => base.OnFullScreenChanged(e);
+    }
+
+    private sealed class SubForm : Form
+    {
+        public new bool ProcessDialogKey(Keys keyData)
+            => base.ProcessDialogKey(keyData);
+    }
+
+    private sealed class EscapeInputControl : Control
+    {
+        protected override bool IsInputKey(Keys keyData)
+            => (keyData & Keys.KeyCode) == Keys.Escape || base.IsInputKey(keyData);
+
+        public void DispatchMessage(ref Message message)
+            => base.WndProc(ref message);
+    }
+
+    private sealed class EscapeComboBox : ComboBox
+    {
+        public void DispatchMessage(ref Message message)
+            => base.WndProc(ref message);
+    }
+
+    private sealed class EscapeTextBox : TextBox
+    {
+        public bool EscapeHandled { get; private set; }
+
+        protected internal override bool ProcessKeyMessage(ref Message message)
+        {
+            bool handled = base.ProcessKeyMessage(ref message);
+            if (message.Msg == (int)PInvokeCore.WM_KEYDOWN && (Keys)message.WParam == Keys.Escape)
+            {
+                EscapeHandled = true;
+                return true;
+            }
+
+            return handled;
+        }
+    }
+
+    private sealed class EscapeDialogKeyForm : Form
+    {
+        public bool EscapeHandled { get; private set; }
+
+        protected override bool ProcessDialogKey(Keys keyData)
+        {
+            bool handled = base.ProcessDialogKey(keyData);
+            if (!handled && (keyData & Keys.KeyCode) == Keys.Escape)
+            {
+                EscapeHandled = true;
+                return true;
+            }
+
+            return handled;
+        }
+    }
+
+    private sealed class EscapeDataGridView : DataGridView
+    {
+        public bool EscapeHandled { get; private set; }
+
+        protected override bool ProcessDataGridViewKey(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                EscapeHandled = true;
+                return true;
+            }
+
+            return base.ProcessDataGridViewKey(e);
+        }
+    }
+
+    private sealed class TestButtonControl : IButtonControl
+    {
+        public DialogResult DialogResult { get; set; }
+
+        public int ClickCount { get; private set; }
+
+        public void NotifyDefault(bool value)
+        {
+        }
+
+        public void PerformClick()
+            => ClickCount++;
     }
 }
 #endif

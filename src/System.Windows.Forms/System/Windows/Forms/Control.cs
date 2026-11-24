@@ -9517,7 +9517,8 @@ public unsafe partial class Control :
 
             PreProcessControlState state = PreProcessControlState.MessageNotNeeded;
 
-            if (!target.PreProcessMessage(ref message))
+            bool handled = target.PreProcessMessage(ref message);
+            if (!handled)
             {
                 if (message.MsgInternal == PInvokeCore.WM_KEYDOWN || message.MsgInternal == PInvokeCore.WM_SYSKEYDOWN)
                 {
@@ -9540,6 +9541,14 @@ public unsafe partial class Control :
             }
             else
             {
+#if NET11_0_OR_GREATER
+                if (message.MsgInternal == PInvokeCore.WM_KEYDOWN
+                    && (Keys)(nint)message.WParamInternal == Keys.Escape
+                    && target.FindForm() is Form form)
+                {
+                    form.CompleteDeferredKioskModeEscape(target, ref message, handled: true);
+                }
+#endif
                 state = PreProcessControlState.MessageProcessed;
             }
 
@@ -9787,6 +9796,29 @@ public unsafe partial class Control :
     /// </remarks>
     protected internal virtual bool ProcessKeyMessage(ref Message m) =>
         (_parent is not null && _parent.ProcessKeyPreview(ref m)) || ProcessKeyEventArgs(ref m);
+
+    internal bool ProcessKeyMessageWithKioskMode(ref Message m)
+    {
+#if NET11_0_OR_GREATER
+        Form? form = null;
+        if (m.MsgInternal == PInvokeCore.WM_KEYDOWN
+            && (Keys)(nint)m.WParamInternal == Keys.Escape)
+        {
+            form = FindForm();
+        }
+#endif
+        bool handled = ProcessKeyMessage(ref m);
+#if NET11_0_OR_GREATER
+        if (m.MsgInternal == PInvokeCore.WM_KEYDOWN
+            && (Keys)(nint)m.WParamInternal == Keys.Escape
+            && form is not null
+            && form.CompleteDeferredKioskModeEscape(this, ref m, handled))
+        {
+            return true;
+        }
+#endif
+        return handled;
+    }
 
     /// <summary>
     ///  Previews a keyboard message.
@@ -12256,7 +12288,7 @@ public unsafe partial class Control :
     /// </summary>
     private void WmKeyChar(ref Message m)
     {
-        if (ProcessKeyMessage(ref m))
+        if (ProcessKeyMessageWithKioskMode(ref m))
         {
             return;
         }

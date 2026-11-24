@@ -112,6 +112,9 @@ public partial class Form : ContainerControl
     private static readonly int s_propCancelButton = PropertyStore.CreateKey();
     private static readonly int s_propDefaultButton = PropertyStore.CreateKey();
     private static readonly int s_propDialogOwner = PropertyStore.CreateKey();
+#if NET11_0_OR_GREATER
+    private static readonly int s_propKioskModeManagers = PropertyStore.CreateKey();
+#endif
 
     private static readonly int s_propOwner = PropertyStore.CreateKey();
     private static readonly int s_propOwnedForms = PropertyStore.CreateKey();
@@ -4805,6 +4808,13 @@ public partial class Form : ContainerControl
 
                     break;
                 case Keys.Escape:
+#if NET11_0_OR_GREATER
+                    if (keyData == Keys.Escape && ProcessKioskModeEscape() is bool handled)
+                    {
+                        return handled;
+                    }
+#endif
+
                     if (Properties.TryGetValue(s_propCancelButton, out button))
                     {
                         // In order to keep the behavior in sync with native
@@ -4825,6 +4835,68 @@ public partial class Form : ContainerControl
 
         return base.ProcessDialogKey(keyData);
     }
+
+#if NET11_0_OR_GREATER
+    internal void RegisterKioskModeManager(KioskModeManager manager)
+    {
+        List<KioskModeManager> managers = Properties.GetValueOrDefault<List<KioskModeManager>>(s_propKioskModeManagers) ?? [];
+        managers.Add(manager);
+        Properties.AddOrRemoveValue(s_propKioskModeManagers, managers);
+    }
+
+    internal void UnregisterKioskModeManager(KioskModeManager manager)
+    {
+        if (!Properties.TryGetValue(s_propKioskModeManagers, out List<KioskModeManager>? managers))
+        {
+            return;
+        }
+
+        managers.Remove(manager);
+        if (managers.Count == 0)
+        {
+            Properties.RemoveValue(s_propKioskModeManagers);
+        }
+    }
+
+    private bool? ProcessKioskModeEscape()
+    {
+        if (!Properties.TryGetValue(s_propKioskModeManagers, out List<KioskModeManager>? managers))
+        {
+            return null;
+        }
+
+        for (int i = managers.Count - 1; i >= 0; i--)
+        {
+            if (managers[i].DeferEscapeKey())
+            {
+                return false;
+            }
+
+            if (managers[i].ProcessEscapeKey())
+            {
+                return true;
+            }
+        }
+
+        return null;
+    }
+
+    internal bool CompleteDeferredKioskModeEscape(Control target, ref Message message, bool handled)
+    {
+        if (Properties.TryGetValue(s_propKioskModeManagers, out List<KioskModeManager>? managers))
+        {
+            for (int i = managers.Count - 1; i >= 0; i--)
+            {
+                if (managers[i].CompleteDeferredEscapeKey(target, ref message, handled))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+#endif
 
     /// <summary>
     ///  Processes a dialog character For a MdiChild.
