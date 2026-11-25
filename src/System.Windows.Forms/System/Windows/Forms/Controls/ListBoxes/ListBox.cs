@@ -2240,7 +2240,7 @@ public partial class ListBox : ListControl
         _integralHeightAdjust = true;
         try
         {
-            Height = _requestedHeight;
+            SetBoundsForDpi(Left, Top, Width, _requestedHeight, BoundsSpecified.Height);
         }
         finally
         {

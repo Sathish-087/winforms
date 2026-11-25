@@ -137,7 +137,7 @@ public class SplitContainerTests : ControlTestBase
                 int proposedBottom = listBox.Bottom - splitContainer.Panel1.DisplayRectangle.Height;
                 Assert.True(proposedBottom < baselineBottom);
 
-                typeof(DefaultLayout).TestAccessor.Dynamic.UpdateAnchorInfo(listBox);
+                DefaultLayout.InitLayoutForDpi(listBox, BoundsSpecified.All);
 
                 DefaultLayout.AnchorInfo updatedAnchorInfo = Assert.IsType<DefaultLayout.AnchorInfo>(
                     DefaultLayout.GetAnchorInfo(listBox));
@@ -162,6 +162,80 @@ public class SplitContainerTests : ControlTestBase
         finally
         {
             typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
+        }
+    }
+
+    [WinFormsTheory]
+    [InlineData(false, AutoScaleMode.Font)]
+    [InlineData(true, AutoScaleMode.Font)]
+    [InlineData(false, AutoScaleMode.Dpi)]
+    [InlineData(true, AutoScaleMode.Dpi)]
+    public void ListBox_SimulatedDpiRoundTrips_PreserveHeight(bool isCheckedListBox, AutoScaleMode autoScaleMode)
+    {
+        using AnchorLayoutV2Scope scope = new(enable: false);
+        bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+        DPI_AWARENESS_CONTEXT originalAwarenessContext = PInvoke.SetThreadDpiAwarenessContextInternal(
+            DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+        try
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+            using Form form = new() { AutoScaleMode = autoScaleMode, ClientSize = new Size(198, 368) };
+            using SplitContainer splitContainer = new()
+            {
+                Size = form.ClientSize,
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Horizontal,
+                SplitterDistance = 217
+            };
+            using ListBox listBox = isCheckedListBox ? new CheckedListBox() : new ListBox();
+            listBox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            listBox.Bounds = new Rectangle(52, 12, 60, 169);
+            listBox.Items.AddRange(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]);
+            splitContainer.Panel1.Controls.Add(listBox);
+            form.Controls.Add(splitContainer);
+            form.Show();
+
+            int baselineDpi = form.DeviceDpi;
+            int highDpi = baselineDpi * 3 / 2;
+            Rectangle baselineBounds = form.Bounds;
+            Rectangle highBounds = new(
+                baselineBounds.X,
+                baselineBounds.Y,
+                baselineBounds.Width * highDpi / baselineDpi,
+                baselineBounds.Height * highDpi / baselineDpi);
+            int baselineHeight = listBox.Height;
+
+            for (int i = 0; i < 3; i++)
+            {
+                SendDpiTransition(highDpi, highBounds);
+                Assert.Equal(highDpi, form.DeviceDpi);
+                SendDpiTransition(baselineDpi, baselineBounds);
+                Assert.Equal(baselineDpi, form.DeviceDpi);
+                Assert.Equal(baselineHeight, listBox.Height);
+            }
+
+            void SendDpiTransition(int dpi, Rectangle bounds)
+            {
+                WPARAM wParam = WPARAM.MAKEWPARAM(dpi, dpi);
+                Control[] children = [listBox, splitContainer.Panel1, splitContainer.Panel2, splitContainer];
+                foreach (Control child in children)
+                {
+                    PInvokeCore.SendMessage(child, PInvokeCore.WM_DPICHANGED_BEFOREPARENT, wParam);
+                }
+
+                RECT rect = new(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
+                PInvokeCore.SendMessage(form, PInvokeCore.WM_DPICHANGED, wParam, ref rect);
+                for (int i = children.Length - 1; i >= 0; i--)
+                {
+                    PInvokeCore.SendMessage(children[i], PInvokeCore.WM_DPICHANGED_AFTERPARENT);
+                }
+            }
+        }
+        finally
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
+            PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
         }
     }
 

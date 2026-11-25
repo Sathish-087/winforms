@@ -876,7 +876,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
                 }
                 finally
                 {
-                    ResumeAllLayout(this, performLayout: false);
+                    ResumeAllLayout(this, performLayout: false, dpiLayout: true);
                 }
             }
 
@@ -1005,7 +1005,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
 
             if (suspended)
             {
-                ResumeAllLayout(this, performLayout: false);
+                ResumeAllLayout(this, performLayout: false, dpiLayout: true);
             }
         }
     }
@@ -1032,7 +1032,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
     /// <summary>
     ///  Recursively resumes all layout.
     /// </summary>
-    internal static void ResumeAllLayout(Control start, bool performLayout)
+    internal static void ResumeAllLayout(Control start, bool performLayout, bool dpiLayout = false)
     {
         ControlCollection controlsCollection = start.Controls;
         // This may have changed the sizes of our children.
@@ -1041,10 +1041,10 @@ public class ContainerControl : ScrollableControl, IContainerControl
         // enumerate
         for (int i = 0; i < controlsCollection.Count; i++)
         {
-            ResumeAllLayout(controlsCollection[i], performLayout);
+            ResumeAllLayout(controlsCollection[i], performLayout, dpiLayout);
         }
 
-        start.ResumeLayout(performLayout);
+        start.ResumeLayout(performLayout, dpiLayout);
     }
 
     /// <summary>
@@ -1100,7 +1100,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
 
             // When we scale, we are establishing new baselines for the
             // positions of all controls. Therefore, we should resume(false).
-            using (new LayoutTransaction(this, this, PropertyNames.Bounds, false))
+            using (new LayoutTransaction(this, this, PropertyNames.Bounds, false, dpiLayout: true))
             {
                 // Our own container control poses a problem. We want
                 // an outer control to be responsible for scaling it,
@@ -1136,7 +1136,7 @@ public class ContainerControl : ScrollableControl, IContainerControl
                 // Top-level window may be already scaled by WM_DPICHANGE message. So, we skip it in such case.
                 if (!_isScaledByDpiChangedEvent)
                 {
-                    ScaleControl(includedFactor, ourExternalContainerFactor);
+                    ScaleControl(includedFactor, ourExternalContainerFactor, frameworkScaling: true);
                 }
 
                 if (!_doNotScaleChildren)

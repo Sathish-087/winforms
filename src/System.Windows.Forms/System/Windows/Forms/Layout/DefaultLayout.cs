@@ -711,7 +711,7 @@ internal partial class DefaultLayout : LayoutEngine
     /// <summary>
     ///  Updates the control's anchors information based on the control's current bounds.
     /// </summary>
-    private static void UpdateAnchorInfo(IArrangedElement element)
+    private static void UpdateAnchorInfo(IArrangedElement element, bool dpiLayout = false)
     {
         Debug.Assert(!HasCachedBounds(element.Container), "Do not call this method with an active cached bounds list.");
 
@@ -805,16 +805,14 @@ internal partial class DefaultLayout : LayoutEngine
                 }
             }
             else if (ScaleHelper.IsScalingRequirementMet
+                && dpiLayout
                 && IsDpiChangeScalingInProgress(element)
                 && oldAnchorInfo.Bottom < 0
                 && anchorInfo.Bottom <= parentHeight
-                && proposedBottom < oldAnchorInfo.Bottom
-                && elementBounds.Y == cachedBounds.Y
-                && elementBounds.Height <= cachedBounds.Height)
+                && proposedBottom < oldAnchorInfo.Bottom)
             {
-                // During DPI/layout transitions, parent size may temporarily grow while the control
-                // remains unchanged and inside parent bounds. Preserve the previous bottom anchor
-                // instead of rebaking a more negative margin.
+                // A framework scaling update may see the parent at a temporary size.
+                // Keep the latest bottom anchor rather than rebaking that temporary margin.
                 anchorInfo.Bottom = oldAnchorInfo.Bottom;
                 if (!IsAnchored(anchor, AnchorStyles.Top))
                 {
@@ -1127,6 +1125,12 @@ internal partial class DefaultLayout : LayoutEngine
         element.Properties.AddOrRemoveValue(s_layoutInfoProperty, value);
 
     private protected override void InitLayoutCore(IArrangedElement element, BoundsSpecified specified)
+        => InitLayoutCore(element, specified, dpiLayout: false);
+
+    internal static void InitLayoutForDpi(IArrangedElement element, BoundsSpecified specified)
+        => InitLayoutCore(element, specified, dpiLayout: true);
+
+    private static void InitLayoutCore(IArrangedElement element, BoundsSpecified specified, bool dpiLayout)
     {
         Debug.Assert(specified == BoundsSpecified.None || GetCachedBounds(element) == element.Bounds,
             "Attempt to InitLayout while element has active cached bounds.");
@@ -1134,7 +1138,7 @@ internal partial class DefaultLayout : LayoutEngine
         if (specified != BoundsSpecified.None &&
             (CommonProperties.GetNeedsAnchorLayout(element) || (UseAnchorLayoutV2(element) && ((Control)element)._childControlsNeedAnchorLayout)))
         {
-            UpdateAnchorInfo(element);
+            UpdateAnchorInfo(element, dpiLayout);
         }
     }
 

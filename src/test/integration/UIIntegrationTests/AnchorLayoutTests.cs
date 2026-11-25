@@ -3,6 +3,7 @@
 
 using System.Drawing;
 using System.Windows.Forms.Layout;
+using Windows.Win32.UI.HiDpi;
 
 namespace System.Windows.Forms.UITests;
 
@@ -371,6 +372,143 @@ public class AnchorLayoutTests : ControlTestBase
             form.PerformLayout();
 
             Assert.Equal(80, button.Height);
+        }
+        finally
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
+        }
+    }
+
+    [WinFormsTheory]
+    [InlineData(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left, false)]
+    [InlineData(AnchorStyles.Bottom | AnchorStyles.Left, false)]
+    [InlineData(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left, true)]
+    [InlineData(AnchorStyles.Bottom | AnchorStyles.Left, true)]
+    public void Control_LayoutHandlerResizesDuringDpiScaling_PreservesRequestedBounds(AnchorStyles anchor, bool isListBox)
+    {
+        using AnchorLayoutV2Scope scope = new(enable: false);
+        bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+        DPI_AWARENESS_CONTEXT originalAwarenessContext = PInvoke.SetThreadDpiAwarenessContextInternal(
+            DPI_AWARENESS_CONTEXT.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+        try
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+            using Form form = new() { AutoScaleMode = AutoScaleMode.None, ClientSize = new Size(400, 300) };
+            using Control control = isListBox ? new ListBox { IntegralHeight = false } : new Button();
+            control.Anchor = anchor;
+            control.Bounds = new Rectangle(20, 30, 100, 100);
+            form.Controls.Add(control);
+            form.Show();
+
+            Rectangle requestedBounds = Rectangle.Empty;
+            form.Layout += (_, _) =>
+            {
+                if (form.IsDpiChangeScalingInProgress && requestedBounds.IsEmpty)
+                {
+                    control.Height = 80;
+                    requestedBounds = control.Bounds;
+                }
+            };
+
+            Rectangle suggestedBounds = form.Bounds;
+            suggestedBounds.Height += 20;
+            form.ScaleContainerForDpi(form.DeviceDpi + 48, form.DeviceDpi, suggestedBounds);
+
+            Assert.False(requestedBounds.IsEmpty);
+            Assert.Equal(80, requestedBounds.Height);
+            form.PerformLayout();
+            Assert.Equal(requestedBounds, control.Bounds);
+
+            form.ClientSize = new Size(form.ClientSize.Width, form.ClientSize.Height + 20);
+            Assert.Equal(80 + ((anchor & AnchorStyles.Top) != 0 ? 20 : 0), control.Height);
+            Assert.Equal(requestedBounds.Bottom + 20, control.Bottom);
+        }
+        finally
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
+            PInvoke.SetThreadDpiAwarenessContextInternal(originalAwarenessContext);
+        }
+    }
+
+    [WinFormsFact]
+    public void Control_ExplicitScaleDuringDpiScaling_PreservesScaledBounds()
+    {
+        using AnchorLayoutV2Scope scope = new(enable: false);
+        bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+
+        try
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+            using Form form = new() { AutoScaleMode = AutoScaleMode.None, ClientSize = new Size(400, 300) };
+            using Button button = new()
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
+                Bounds = new Rectangle(20, 30, 100, 100)
+            };
+            form.Controls.Add(button);
+            form.Show();
+
+            form.TestAccessor.Dynamic._isScaledByDpiChangedEvent = true;
+            try
+            {
+                button.Scale(new SizeF(1, 0.8f));
+                form.PerformLayout();
+                Assert.Equal(new Rectangle(20, 24, 100, 80), button.Bounds);
+            }
+            finally
+            {
+                form.TestAccessor.Dynamic._isScaledByDpiChangedEvent = false;
+            }
+        }
+        finally
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = originalPerMonitorAware;
+        }
+    }
+
+    [WinFormsFact]
+    public void Control_SizeChangedHandlerResizesDuringScaling_PreservesRequestedBounds()
+    {
+        using AnchorLayoutV2Scope scope = new(enable: false);
+        bool originalPerMonitorAware = typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware;
+
+        try
+        {
+            typeof(ScaleHelper).TestAccessor.Dynamic.s_processPerMonitorAware = true;
+            using Form form = new() { AutoScaleMode = AutoScaleMode.None, ClientSize = new Size(400, 300) };
+            using Button button = new()
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
+                Bounds = new Rectangle(20, 30, 100, 100)
+            };
+            form.Controls.Add(button);
+            form.Show();
+
+            Rectangle requestedBounds = Rectangle.Empty;
+            button.SizeChanged += (_, _) =>
+            {
+                if (requestedBounds.IsEmpty && button.Height != 40)
+                {
+                    button.Height = 40;
+                    requestedBounds = button.Bounds;
+                }
+            };
+
+            form.TestAccessor.Dynamic._isScaledByDpiChangedEvent = true;
+            try
+            {
+                button.Scale(new SizeF(1, 0.8f));
+            }
+            finally
+            {
+                form.TestAccessor.Dynamic._isScaledByDpiChangedEvent = false;
+            }
+
+            Assert.False(requestedBounds.IsEmpty);
+            Assert.Equal(40, requestedBounds.Height);
+            form.PerformLayout();
+            Assert.Equal(requestedBounds, button.Bounds);
         }
         finally
         {

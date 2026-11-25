@@ -25,6 +25,7 @@ internal sealed class LayoutTransaction : IDisposable
 {
     private readonly Control? _controlToLayout;
     private readonly bool _resumeLayout;
+    private readonly bool _dpiLayout;
 
 #if DEBUG
     private readonly int _layoutSuspendCount;
@@ -34,12 +35,18 @@ internal sealed class LayoutTransaction : IDisposable
     {
     }
 
-    public LayoutTransaction(Control? controlToLayout, IArrangedElement controlCausingLayout, string? property, bool resumeLayout)
+    public LayoutTransaction(
+        Control? controlToLayout,
+        IArrangedElement controlCausingLayout,
+        string? property,
+        bool resumeLayout,
+        bool dpiLayout = false)
     {
         CommonProperties.xClearPreferredSizeCache(controlCausingLayout);
         _controlToLayout = controlToLayout;
 
         _resumeLayout = resumeLayout;
+        _dpiLayout = dpiLayout;
         if (_controlToLayout is not null)
         {
 #if DEBUG
@@ -59,7 +66,7 @@ internal sealed class LayoutTransaction : IDisposable
 
     public void Dispose()
     {
-        _controlToLayout?.ResumeLayout(_resumeLayout);
+        _controlToLayout?.ResumeLayout(_resumeLayout, _dpiLayout);
 #if DEBUG
         Debug.Assert(_controlToLayout is null || _controlToLayout.LayoutSuspendCount == _layoutSuspendCount, "Suspend/Resume layout mismatch!");
 #endif

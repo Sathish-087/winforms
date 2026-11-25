@@ -306,6 +306,10 @@ public unsafe partial class Control :
     // especially when the control's bounds have been altered explicitly.
     internal bool _forceAnchorCalculations;
 
+    // Consumed before bounds callbacks, so reentrant application resizes use ordinary anchor updates.
+    private bool _dpiBoundsUpdatePending;
+    private bool _frameworkScaling;
+
     internal byte LayoutSuspendCount { get; private set; }
 
     /// <summary>
@@ -7295,7 +7299,7 @@ public unsafe partial class Control :
 
         if (ChildControls is { } children)
         {
-            using (new LayoutTransaction(this, this, PropertyNames.Font, resumeLayout: false))
+            using (new LayoutTransaction(this, this, PropertyNames.Font, resumeLayout: false, dpiLayout: true))
             {
                 // This may have changed the sizes of our children.
                 for (int i = 0; i < children.Count; i++)
@@ -10284,7 +10288,9 @@ public unsafe partial class Control :
     ///  Resumes normal layout logic. If performLayout is set to true then
     ///  this will force a layout immediately if there are any pending layout requests.
     /// </summary>
-    public void ResumeLayout(bool performLayout)
+    public void ResumeLayout(bool performLayout) => ResumeLayout(performLayout, dpiLayout: false);
+
+    internal void ResumeLayout(bool performLayout, bool dpiLayout)
     {
         bool performedLayout = false;
         if (LayoutSuspendCount > 0)
@@ -10330,7 +10336,15 @@ public unsafe partial class Control :
                 for (int i = 0; i < children.Count; i++)
                 {
                     Control child = children[i];
-                    LayoutEngine.InitLayout(child, BoundsSpecified.All);
+                    if (dpiLayout && LayoutEngine == DefaultLayout.Instance)
+                    {
+                        DefaultLayout.InitLayoutForDpi(child, BoundsSpecified.All);
+                    }
+                    else
+                    {
+                        LayoutEngine.InitLayout(child, BoundsSpecified.All);
+                    }
+
                     CommonProperties.xClearPreferredSizeCache(child);
                 }
             }
@@ -10450,9 +10464,9 @@ public unsafe partial class Control :
     {
         // When we scale, we are establishing new baselines for the
         // positions of all controls. Therefore, we should resume(false).
-        using (new LayoutTransaction(this, this, PropertyNames.Bounds, false))
+        using (new LayoutTransaction(this, this, PropertyNames.Bounds, false, dpiLayout: true))
         {
-            ScaleControl(includedFactor, excludedFactor);
+            ScaleControl(includedFactor, excludedFactor, frameworkScaling: true);
 
             // Certain controls like 'PropertyGrid' does special scaling. Differing scaling to their own methods.
             if (!_doNotScaleChildren)
@@ -10537,8 +10551,10 @@ public unsafe partial class Control :
     ///  The requestingControl property indicates which control has requested
     ///  the scaling function.
     /// </summary>
-    internal void ScaleControl(SizeF includedFactor, SizeF excludedFactor)
+    internal void ScaleControl(SizeF includedFactor, SizeF excludedFactor, bool frameworkScaling = false)
     {
+        bool previousFrameworkScaling = _frameworkScaling;
+        _frameworkScaling = frameworkScaling;
         try
         {
             ScalingInProgress = true;
@@ -10574,6 +10590,7 @@ public unsafe partial class Control :
         finally
         {
             ScalingInProgress = false;
+            _frameworkScaling = previousFrameworkScaling;
         }
     }
 
@@ -10673,7 +10690,14 @@ public unsafe partial class Control :
         }
 
         // Set in the scaled bounds as constrained by the newly scaled min/max size.
-        SetBoundsCore(rawScaledBounds.X, rawScaledBounds.Y, scaledSize.Width, scaledSize.Height, BoundsSpecified.All);
+        if (_frameworkScaling)
+        {
+            SetBoundsCoreForDpi(rawScaledBounds.X, rawScaledBounds.Y, scaledSize.Width, scaledSize.Height, BoundsSpecified.All);
+        }
+        else
+        {
+            SetBoundsCore(rawScaledBounds.X, rawScaledBounds.Y, scaledSize.Width, scaledSize.Height, BoundsSpecified.All);
+        }
 
         MaximumSize = maxSize;
         MinimumSize = minSize;
@@ -10855,6 +10879,7 @@ public unsafe partial class Control :
     /// </summary>
     public void SetBounds(int x, int y, int width, int height)
     {
+        _dpiBoundsUpdatePending = false;
         if (_x != x || _y != y || _width != width || _height != height)
         {
             _forceAnchorCalculations = AppContextSwitches.AnchorLayoutV2;
@@ -10882,7 +10907,11 @@ public unsafe partial class Control :
     ///  Sets the bounds of the control.
     /// </summary>
     public void SetBounds(int x, int y, int width, int height, BoundsSpecified specified)
+        => SetBounds(x, y, width, height, specified, dpiLayout: false);
+
+    private void SetBounds(int x, int y, int width, int height, BoundsSpecified specified, bool dpiLayout)
     {
+        _dpiBoundsUpdatePending = false;
         if ((specified & BoundsSpecified.X) == BoundsSpecified.None)
         {
             x = _x;
@@ -10908,7 +10937,14 @@ public unsafe partial class Control :
             _forceAnchorCalculations = AppContextSwitches.AnchorLayoutV2;
             try
             {
-                SetBoundsCore(x, y, width, height, specified);
+                if (dpiLayout)
+                {
+                    SetBoundsCoreForDpi(x, y, width, height, specified);
+                }
+                else
+                {
+                    SetBoundsCore(x, y, width, height, specified);
+                }
             }
             finally
             {
@@ -10927,6 +10963,22 @@ public unsafe partial class Control :
         }
     }
 
+    internal void SetBoundsForDpi(int x, int y, int width, int height, BoundsSpecified specified)
+        => SetBounds(x, y, width, height, specified, dpiLayout: true);
+
+    private void SetBoundsCoreForDpi(int x, int y, int width, int height, BoundsSpecified specified)
+    {
+        _dpiBoundsUpdatePending = true;
+        try
+        {
+            SetBoundsCore(x, y, width, height, specified);
+        }
+        finally
+        {
+            _dpiBoundsUpdatePending = false;
+        }
+    }
+
     /// <summary>
     ///  Performs the work of setting the specified bounds of this control.
     /// </summary>
@@ -10938,6 +10990,8 @@ public unsafe partial class Control :
     [EditorBrowsable(EditorBrowsableState.Advanced)]
     protected virtual void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
     {
+        bool dpiLayout = _dpiBoundsUpdatePending;
+        _dpiBoundsUpdatePending = false;
         // SetWindowPos below sends a WmWindowPositionChanged (not posts) so we immediately
         // end up in WmWindowPositionChanged which may cause the parent to layout. We need to
         // suspend/resume to defer the parent from laying out until after InitLayout has been called
@@ -11012,7 +11066,14 @@ public unsafe partial class Control :
                 // memorize their distance from their parent's edges). It is your parent's
                 // LayoutEngine which manages your layout, so we call into the parent's
                 // LayoutEngine.
-                ParentInternal.LayoutEngine.InitLayout(this, specified);
+                if (dpiLayout && ParentInternal.LayoutEngine == DefaultLayout.Instance)
+                {
+                    DefaultLayout.InitLayoutForDpi(this, specified);
+                }
+                else
+                {
+                    ParentInternal.LayoutEngine.InitLayout(this, specified);
+                }
             }
         }
     }
