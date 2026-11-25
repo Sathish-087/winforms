@@ -223,7 +223,7 @@ public class CheckBoxToggleSwitchTests
     [InlineData(true, TextImageRelation.TextAboveImage, true)]
     [InlineData(true, TextImageRelation.ImageBeforeText, true)]
     [InlineData(true, TextImageRelation.TextBeforeImage, true)]
-    public void ToggleSwitch_AutoSize_RendersTextAndPositionsAnyVisibleImage(
+    public void ToggleSwitch_AutoSize_RendersFullImageAndCaptionInRelationOrder(
         bool radioButton,
         TextImageRelation relation,
         bool useMinimumSize)
@@ -231,7 +231,7 @@ public class CheckBoxToggleSwitchTests
         using SystemVisualSettingsTestScope settingsScope = new(
             clientAreaAnimationEnabled: false,
             highContrastEnabled: false);
-        using Bitmap image = useMinimumSize ? new Bitmap(12, 8) : new Bitmap(1, 1);
+        using Bitmap image = new(213, 148);
         using (Graphics graphics = Graphics.FromImage(image))
         {
             graphics.Clear(Color.Magenta);
@@ -246,7 +246,7 @@ public class CheckBoxToggleSwitchTests
         control.AutoSize = true;
         if (useMinimumSize)
         {
-            control.MinimumSize = new Size(220, 70);
+            control.MinimumSize = new Size(350, 185);
         }
 
         control.Image = image;
@@ -260,7 +260,18 @@ public class CheckBoxToggleSwitchTests
         parent.CreateControl();
         control.CreateControl();
         Assert.True(control.AutoSize);
-        Assert.Equal(control.GetPreferredSize(Size.Empty), control.Size);
+        Size preferredSize = control.GetPreferredSize(Size.Empty);
+        if (useMinimumSize)
+        {
+            Assert.True(control.Width >= control.MinimumSize.Width);
+            Assert.True(control.Height >= control.MinimumSize.Height);
+            Assert.True(control.Width >= preferredSize.Width);
+            Assert.True(control.Height >= preferredSize.Height);
+        }
+        else
+        {
+            Assert.Equal(preferredSize, control.Size);
+        }
 
         using Bitmap rendered = new(control.Width, control.Height);
         control.DrawToBitmap(rendered, control.ClientRectangle);
@@ -291,24 +302,18 @@ public class CheckBoxToggleSwitchTests
         }
 
         Assert.False(textBounds.IsEmpty);
-        if (useMinimumSize)
-        {
-            Assert.Equal(image.Size, imageBounds.Size);
-            Assert.Equal(image.Width * image.Height, imagePixels);
-            Assert.True(HasCompleteCaption(control, rendered, textArea, out string diagnostic), diagnostic);
-        }
+        Assert.Equal(image.Size, imageBounds.Size);
+        Assert.Equal(image.Width * image.Height, imagePixels);
+        Assert.True(HasCompleteCaption(control, rendered, textArea, out string diagnostic), diagnostic);
 
-        if (!imageBounds.IsEmpty)
+        Assert.True(relation switch
         {
-            Assert.True(relation switch
-            {
-                TextImageRelation.ImageAboveText => imageBounds.Bottom <= textBounds.Top,
-                TextImageRelation.TextAboveImage => textBounds.Bottom <= imageBounds.Top,
-                TextImageRelation.ImageBeforeText => imageBounds.Right <= textBounds.Left,
-                TextImageRelation.TextBeforeImage => textBounds.Right <= imageBounds.Left,
-                _ => false
-            }, $"Incorrect image/text order for {relation}: image {imageBounds}, text {textBounds}.");
-        }
+            TextImageRelation.ImageAboveText => imageBounds.Bottom <= textBounds.Top,
+            TextImageRelation.TextAboveImage => textBounds.Bottom <= imageBounds.Top,
+            TextImageRelation.ImageBeforeText => imageBounds.Right <= textBounds.Left,
+            TextImageRelation.TextBeforeImage => textBounds.Right <= imageBounds.Left,
+            _ => false
+        }, $"Incorrect image/text order for {relation}: image {imageBounds}, text {textBounds}.");
     }
 
     public static IEnumerable<object[]> RenderingMatrixData()

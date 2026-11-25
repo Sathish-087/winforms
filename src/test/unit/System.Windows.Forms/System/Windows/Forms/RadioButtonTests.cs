@@ -337,7 +337,7 @@ public class RadioButtonTests : AbstractButtonBaseTests
     [InlineData(TextImageRelation.TextAboveImage)]
     [InlineData(TextImageRelation.ImageBeforeText)]
     [InlineData(TextImageRelation.TextBeforeImage)]
-    public void RadioButton_ToggleSwitch_AutoSize_NonOverlayImage_DoesNotAffectPreferredSize(
+    public void RadioButton_ToggleSwitch_AutoSize_IncludesNonOverlayImageInPreferredSize(
         TextImageRelation relation)
     {
         using Bitmap image = new(213, 148);
@@ -363,8 +363,16 @@ public class RadioButtonTests : AbstractButtonBaseTests
         Size preferredWithImage = withImage.GetPreferredSize(Size.Empty);
         Size preferredWithoutImage = withoutImage.GetPreferredSize(Size.Empty);
 
-        Assert.Equal(preferredWithoutImage, preferredWithImage);
-        Assert.True(image.Height > preferredWithImage.Height);
+        Assert.True(relation switch
+        {
+            TextImageRelation.ImageAboveText or TextImageRelation.TextAboveImage
+                => preferredWithImage.Height > preferredWithoutImage.Height,
+            TextImageRelation.ImageBeforeText or TextImageRelation.TextBeforeImage
+                => preferredWithImage.Width > preferredWithoutImage.Width,
+            _ => false
+        });
+        Assert.True(preferredWithImage.Width >= image.Width);
+        Assert.True(preferredWithImage.Height >= image.Height);
     }
 
     [WinFormsTheory]
@@ -372,7 +380,8 @@ public class RadioButtonTests : AbstractButtonBaseTests
     [InlineData(TextImageRelation.TextAboveImage)]
     [InlineData(TextImageRelation.ImageBeforeText)]
     [InlineData(TextImageRelation.TextBeforeImage)]
-    public void RadioButton_ToggleSwitch_AutoSize_OversizedImage_RendersCaptionPixels(TextImageRelation relation)
+    public void RadioButton_ToggleSwitch_AutoSize_OversizedImage_RendersFullImageAndCaptionInRelationOrder(
+        TextImageRelation relation)
     {
         using SystemVisualSettingsTestScope settingsScope = new(
             clientAreaAnimationEnabled: false,
@@ -409,19 +418,19 @@ public class RadioButtonTests : AbstractButtonBaseTests
             metrics);
         Rectangle visibleText = GetPixelBounds(rendered, Color.Black, textArea);
         Rectangle visibleImage = GetPixelBounds(rendered, Color.Magenta, withImage.ClientRectangle);
-        Assert.True(image.Height > withImage.ClientSize.Height);
-        Assert.False(visibleText.IsEmpty, $"Relation {relation} should render caption pixels.");
-        if (!visibleImage.IsEmpty)
+        Assert.Equal(image.Size, visibleImage.Size);
+        Assert.Equal(image.Width * image.Height, CountPixels(rendered, Color.Magenta));
+        Assert.True(
+            CheckBoxToggleSwitchTests.HasCompleteCaption(withImage, rendered, textArea, out string diagnostic),
+            diagnostic);
+        Assert.True(relation switch
         {
-            Assert.True(relation switch
-            {
-                TextImageRelation.ImageAboveText => visibleImage.Bottom <= visibleText.Top,
-                TextImageRelation.TextAboveImage => visibleText.Bottom <= visibleImage.Top,
-                TextImageRelation.ImageBeforeText => visibleImage.Right <= visibleText.Left,
-                TextImageRelation.TextBeforeImage => visibleText.Right <= visibleImage.Left,
-                _ => false
-            }, $"Incorrect image/text order for {relation}: image {visibleImage}, text {visibleText}.");
-        }
+            TextImageRelation.ImageAboveText => visibleImage.Bottom <= visibleText.Top,
+            TextImageRelation.TextAboveImage => visibleText.Bottom <= visibleImage.Top,
+            TextImageRelation.ImageBeforeText => visibleImage.Right <= visibleText.Left,
+            TextImageRelation.TextBeforeImage => visibleText.Right <= visibleImage.Left,
+            _ => false
+        }, $"Incorrect image/text order for {relation}: image {visibleImage}, text {visibleText}.");
     }
 
     [WinFormsFact]

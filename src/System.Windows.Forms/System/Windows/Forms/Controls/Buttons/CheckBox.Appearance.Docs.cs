@@ -19,9 +19,9 @@ public partial class CheckBox
     ///   classic check-box behavior instead.
     ///  </para>
     ///  <para>
-    ///   In toggle-switch mode, <see cref="ButtonBase.Image"/> does not affect the preferred size. With
-    ///   <see cref="TextImageRelation.Overlay"/>, the image is scaled to fill the control's client area, and the switch
-    ///   and text are rendered over it. Other <see cref="ButtonBase.TextImageRelation"/> values position the image
+    ///   With <see cref="TextImageRelation.Overlay"/>, the image does not affect the preferred size and is scaled to
+    ///   fill the control's client area, with the switch and text rendered over it. Other
+    ///   <see cref="ButtonBase.TextImageRelation"/> values include the image in the preferred size and position it
     ///   relative to the text in the content area opposite the switch; <see cref="ButtonBase.ImageAlign"/> and
     ///   <see cref="ButtonBase.TextAlign"/> apply to that layout.
     ///  </para>

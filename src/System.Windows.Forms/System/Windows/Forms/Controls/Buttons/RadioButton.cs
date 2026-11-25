@@ -78,10 +78,10 @@ public partial class RadioButton : ButtonBase
     /// <remarks>
     ///  <para>
     ///   <see cref="Appearance.ToggleSwitch"/> selects the framework's owner-drawn toggle renderer in an
-    ///   effective .NET 11-or-later mode. In this mode, <see cref="ButtonBase.Image"/> does not affect the preferred
-    ///   size. With <see cref="TextImageRelation.Overlay"/>, the image is scaled to fill the control's client area, and
-    ///   the switch and text are rendered over it. Other <see cref="ButtonBase.TextImageRelation"/> values position the
-    ///   image relative to the text in the content area opposite the switch; <see cref="ButtonBase.ImageAlign"/> and
+    ///   effective .NET 11-or-later mode. With <see cref="TextImageRelation.Overlay"/>, the image does not affect the
+    ///   preferred size and is scaled to fill the control's client area, with the switch and text rendered over it.
+    ///   Other <see cref="ButtonBase.TextImageRelation"/> values include the image in the preferred size and position
+    ///   it relative to the text in the content area opposite the switch; <see cref="ButtonBase.ImageAlign"/> and
     ///   <see cref="ButtonBase.TextAlign"/> apply to that layout. High Contrast resolves to classic rendering. Modern
     ///   toggle metrics can increase preferred size; see the
     ///   <see href="https://github.com/dotnet/winforms/blob/main/docs/net11-visualstyles-layout-guidance.md">

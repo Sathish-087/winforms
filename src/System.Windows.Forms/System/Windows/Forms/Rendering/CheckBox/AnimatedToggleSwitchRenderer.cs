@@ -720,6 +720,21 @@ internal readonly struct ToggleSwitchMetrics
     {
         TextFormatFlags textFormatFlags = AnimatedToggleSwitchRenderer.GetTextFormatFlags(control);
         Size contentSize = AnimatedToggleSwitchRenderer.MeasureText(control, textFormatFlags);
+        if (control is ButtonBase { Image: { } image, TextImageRelation: not TextImageRelation.Overlay } button)
+        {
+            Size imageSize = image.Size;
+            contentSize = button.TextImageRelation switch
+            {
+                TextImageRelation.ImageAboveText or TextImageRelation.TextAboveImage => new Size(
+                    Math.Max(contentSize.Width, imageSize.Width),
+                    contentSize.Height + imageSize.Height),
+                TextImageRelation.ImageBeforeText or TextImageRelation.TextBeforeImage => new Size(
+                    contentSize.Width + imageSize.Width,
+                    Math.Max(contentSize.Height, imageSize.Height)),
+                _ => contentSize
+            };
+        }
+
         return new Size(
             SwitchWidth + TextGap + contentSize.Width + control.Padding.Horizontal,
             Math.Max(SwitchHeight, contentSize.Height) + control.Padding.Vertical);
