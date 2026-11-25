@@ -19,18 +19,41 @@ public class CheckBoxToggleSwitchTests
         Rectangle textArea,
         out string diagnostic)
     {
-        using Bitmap reference = new(450, 100);
-        using (Graphics graphics = Graphics.FromImage(reference))
+        using ButtonBase referenceControl = control switch
         {
-            graphics.Clear(Color.White);
-            TextRenderer.DrawText(
-                graphics,
-                control.Text,
-                control.Font,
-                new Rectangle(Point.Empty, reference.Size),
-                Color.Black,
-                Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextFormatFlags(control));
-        }
+            CheckBox checkBox => new CheckBox
+            {
+                Appearance = Appearance.ToggleSwitch,
+                CheckAlign = checkBox.CheckAlign
+            },
+            RadioButton radioButton => new RadioButton
+            {
+                Appearance = Appearance.ToggleSwitch,
+                CheckAlign = radioButton.CheckAlign
+            },
+            _ => throw new ArgumentException("Expected a CheckBox or RadioButton.", nameof(control))
+        };
+        referenceControl.VisualStylesMode = control.VisualStylesMode;
+        referenceControl.FlatStyle = control.FlatStyle;
+        referenceControl.BackColor = Color.White;
+        referenceControl.ForeColor = Color.Black;
+        referenceControl.Font = control.Font;
+        referenceControl.RightToLeft = control.RightToLeft;
+        referenceControl.Text = control.Text;
+        referenceControl.TextAlign = control.TextAlign;
+        referenceControl.UseMnemonic = control.UseMnemonic;
+        referenceControl.Size = new Size(450, 100);
+        using Bitmap reference = new(referenceControl.Width, referenceControl.Height);
+        referenceControl.DrawToBitmap(reference, referenceControl.ClientRectangle);
+        Rendering.CheckBox.ToggleSwitchMetrics referenceMetrics =
+            Rendering.CheckBox.ToggleSwitchMetrics.Create(referenceControl);
+        ContentAlignment referenceCheckAlign = referenceControl is CheckBox referenceCheckBox
+            ? referenceCheckBox.RtlTranslatedCheckAlign
+            : ((RadioButton)referenceControl).RtlTranslatedCheckAlign;
+        Rectangle referenceTextArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            referenceControl,
+            referenceCheckAlign,
+            referenceMetrics);
 
         static Rectangle GetBlackPixelBounds(Bitmap bitmap, Rectangle bounds)
         {
@@ -56,31 +79,49 @@ public class CheckBoxToggleSwitchTests
         }
 
         Rectangle actualBounds = GetBlackPixelBounds(rendered, Rectangle.Intersect(textArea, control.ClientRectangle));
-        Rectangle expectedBounds = GetBlackPixelBounds(reference, new Rectangle(Point.Empty, reference.Size));
+        Rectangle expectedBounds = GetBlackPixelBounds(reference, referenceTextArea);
         if (actualBounds.IsEmpty || actualBounds.Size != expectedBounds.Size)
         {
             diagnostic = $"Actual glyph bounds {actualBounds}; expected {expectedBounds}.";
             return false;
         }
 
-        // Compare solid glyph pixels; antialiased edge colors vary between rendering targets.
-        for (int y = 0; y < expectedBounds.Height; y++)
+        Point offset = new(actualBounds.X - expectedBounds.X, actualBounds.Y - expectedBounds.Y);
+        for (int y = referenceTextArea.Top; y < referenceTextArea.Bottom; y++)
         {
-            for (int x = 0; x < expectedBounds.Width; x++)
+            for (int x = referenceTextArea.Left; x < referenceTextArea.Right; x++)
             {
-                bool actualPixel = rendered.GetPixel(actualBounds.X + x, actualBounds.Y + y).ToArgb()
-                    == Color.Black.ToArgb();
-                bool expectedPixel = reference.GetPixel(expectedBounds.X + x, expectedBounds.Y + y).ToArgb()
-                    == Color.Black.ToArgb();
-                if (actualPixel != expectedPixel)
+                Color expectedPixel = reference.GetPixel(x, y);
+                bool isBackground = expectedPixel.ToArgb() == Color.White.ToArgb();
+                if (isBackground && !expectedBounds.Contains(x, y))
                 {
-                    diagnostic = $"Glyph masks differ at ({x}, {y}) within {expectedBounds.Size}.";
+                    continue;
+                }
+
+                int actualX = x + offset.X;
+                int actualY = y + offset.Y;
+                if (!textArea.Contains(actualX, actualY)
+                    || !control.ClientRectangle.Contains(actualX, actualY))
+                {
+                    if (isBackground)
+                    {
+                        continue;
+                    }
+
+                    diagnostic = $"Caption pixel ({x}, {y}) is outside the actual text area.";
+                    return false;
+                }
+
+                Color actualPixel = rendered.GetPixel(actualX, actualY);
+                if (actualPixel.ToArgb() != expectedPixel.ToArgb())
+                {
+                    diagnostic = $"Caption pixel ({x}, {y}) differs: expected {expectedPixel}, actual {actualPixel}.";
                     return false;
                 }
             }
         }
 
-        diagnostic = $"Complete glyph bounds matched: {actualBounds.Size}.";
+        diagnostic = $"Caption pixels matched within {actualBounds.Size} glyph bounds.";
         return true;
     }
 
@@ -115,6 +156,159 @@ public class CheckBoxToggleSwitchTests
         Assert.True(
             HasCompleteCaption(control, rendered, textArea, out string diagnostic),
             diagnostic);
+    }
+
+    [WinFormsFact]
+    public void ToggleSwitch_CaptionComparison_RejectsMissingGlyphPixel()
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using CheckBox control = new()
+        {
+            Appearance = Appearance.ToggleSwitch,
+            BackColor = Color.White,
+            ForeColor = Color.Black,
+            Size = new Size(450, 80),
+            Text = "Toggle caption",
+            VisualStylesMode = VisualStylesMode.Net11
+        };
+        using Bitmap rendered = new(control.Width, control.Height);
+        control.DrawToBitmap(rendered, control.ClientRectangle);
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(control);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            control,
+            control.RtlTranslatedCheckAlign,
+            metrics);
+        Assert.True(HasCompleteCaption(control, rendered, textArea, out string diagnostic), diagnostic);
+
+        Point? pixelToRemove = null;
+        bool foundAntialiasedPixel = false;
+        for (int y = textArea.Top; y < textArea.Bottom && !foundAntialiasedPixel; y++)
+        {
+            for (int x = textArea.Left; x < textArea.Right; x++)
+            {
+                int pixel = rendered.GetPixel(x, y).ToArgb();
+                if (pixel != Color.White.ToArgb())
+                {
+                    pixelToRemove = new Point(x, y);
+                    if (pixel != Color.Black.ToArgb())
+                    {
+                        foundAntialiasedPixel = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        Assert.True(pixelToRemove.HasValue, "The caption must contain a visible glyph pixel.");
+        rendered.SetPixel(pixelToRemove.Value.X, pixelToRemove.Value.Y, Color.White);
+        Assert.False(HasCompleteCaption(control, rendered, textArea, out _));
+    }
+
+    [WinFormsTheory]
+    [InlineData(false, TextImageRelation.ImageAboveText, false)]
+    [InlineData(false, TextImageRelation.TextAboveImage, false)]
+    [InlineData(false, TextImageRelation.ImageBeforeText, false)]
+    [InlineData(false, TextImageRelation.TextBeforeImage, false)]
+    [InlineData(true, TextImageRelation.ImageAboveText, false)]
+    [InlineData(true, TextImageRelation.TextAboveImage, false)]
+    [InlineData(true, TextImageRelation.ImageBeforeText, false)]
+    [InlineData(true, TextImageRelation.TextBeforeImage, false)]
+    [InlineData(false, TextImageRelation.ImageAboveText, true)]
+    [InlineData(false, TextImageRelation.TextAboveImage, true)]
+    [InlineData(false, TextImageRelation.ImageBeforeText, true)]
+    [InlineData(false, TextImageRelation.TextBeforeImage, true)]
+    [InlineData(true, TextImageRelation.ImageAboveText, true)]
+    [InlineData(true, TextImageRelation.TextAboveImage, true)]
+    [InlineData(true, TextImageRelation.ImageBeforeText, true)]
+    [InlineData(true, TextImageRelation.TextBeforeImage, true)]
+    public void ToggleSwitch_AutoSize_RendersTextAndPositionsAnyVisibleImage(
+        bool radioButton,
+        TextImageRelation relation,
+        bool useMinimumSize)
+    {
+        using SystemVisualSettingsTestScope settingsScope = new(
+            clientAreaAnimationEnabled: false,
+            highContrastEnabled: false);
+        using Bitmap image = useMinimumSize ? new Bitmap(12, 8) : new Bitmap(1, 1);
+        using (Graphics graphics = Graphics.FromImage(image))
+        {
+            graphics.Clear(Color.Magenta);
+        }
+
+        using ButtonBase control = radioButton
+            ? new RadioButton { Appearance = Appearance.ToggleSwitch }
+            : new CheckBox { Appearance = Appearance.ToggleSwitch };
+        control.VisualStylesMode = VisualStylesMode.Net11;
+        control.BackColor = Color.White;
+        control.ForeColor = Color.Black;
+        control.AutoSize = true;
+        if (useMinimumSize)
+        {
+            control.MinimumSize = new Size(220, 70);
+        }
+
+        control.Image = image;
+        control.ImageAlign = ContentAlignment.MiddleCenter;
+        control.Text = "Toggle";
+        control.TextAlign = ContentAlignment.MiddleCenter;
+        control.TextImageRelation = relation;
+
+        using Form parent = new();
+        parent.Controls.Add(control);
+        parent.CreateControl();
+        control.CreateControl();
+        Assert.True(control.AutoSize);
+        Assert.Equal(control.GetPreferredSize(Size.Empty), control.Size);
+
+        using Bitmap rendered = new(control.Width, control.Height);
+        control.DrawToBitmap(rendered, control.ClientRectangle);
+        Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(control);
+        Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
+            control,
+            ContentAlignment.MiddleLeft,
+            metrics);
+        Rectangle imageBounds = Rectangle.Empty;
+        Rectangle textBounds = Rectangle.Empty;
+        int imagePixels = 0;
+        for (int y = textArea.Top; y < textArea.Bottom; y++)
+        {
+            for (int x = textArea.Left; x < textArea.Right; x++)
+            {
+                int pixel = rendered.GetPixel(x, y).ToArgb();
+                Rectangle pixelBounds = new(x, y, 1, 1);
+                if (pixel == Color.Magenta.ToArgb())
+                {
+                    imagePixels++;
+                    imageBounds = imageBounds.IsEmpty ? pixelBounds : Rectangle.Union(imageBounds, pixelBounds);
+                }
+                else if (pixel == Color.Black.ToArgb())
+                {
+                    textBounds = textBounds.IsEmpty ? pixelBounds : Rectangle.Union(textBounds, pixelBounds);
+                }
+            }
+        }
+
+        Assert.False(textBounds.IsEmpty);
+        if (useMinimumSize)
+        {
+            Assert.Equal(image.Size, imageBounds.Size);
+            Assert.Equal(image.Width * image.Height, imagePixels);
+            Assert.True(HasCompleteCaption(control, rendered, textArea, out string diagnostic), diagnostic);
+        }
+
+        if (!imageBounds.IsEmpty)
+        {
+            Assert.True(relation switch
+            {
+                TextImageRelation.ImageAboveText => imageBounds.Bottom <= textBounds.Top,
+                TextImageRelation.TextAboveImage => textBounds.Bottom <= imageBounds.Top,
+                TextImageRelation.ImageBeforeText => imageBounds.Right <= textBounds.Left,
+                TextImageRelation.TextBeforeImage => textBounds.Right <= imageBounds.Left,
+                _ => false
+            }, $"Incorrect image/text order for {relation}: image {imageBounds}, text {textBounds}.");
+        }
     }
 
     public static IEnumerable<object[]> RenderingMatrixData()

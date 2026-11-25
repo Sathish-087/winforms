@@ -1258,12 +1258,15 @@ public class CheckBoxTests : AbstractButtonBaseTests
             box.RtlTranslatedCheckAlign,
             metrics);
         Rectangle imagePixels = GetPixelBounds(bitmap, Color.Magenta, box.ClientRectangle);
+        Rectangle textPixels = GetPixelBounds(bitmap, Color.Black, textArea);
 
         Assert.Equal(box.Font.Height, box.Height);
         Assert.True(
             CheckBoxToggleSwitchTests.HasCompleteCaption(box, bitmap, textArea, out string diagnostic),
             diagnostic);
         Assert.Equal(image.Size, imagePixels.Size);
+        Assert.Equal(image.Width * image.Height, CountPixels(bitmap, Color.Magenta));
+        Assert.True(imagePixels.Right <= textPixels.Left, $"Image {imagePixels} should precede text {textPixels}.");
     }
 
     [WinFormsTheory]
@@ -1306,7 +1309,7 @@ public class CheckBoxTests : AbstractButtonBaseTests
     [InlineData(TextImageRelation.TextAboveImage)]
     [InlineData(TextImageRelation.ImageBeforeText)]
     [InlineData(TextImageRelation.TextBeforeImage)]
-    public void CheckBox_ToggleSwitch_AutoSize_NonOverlayImage_ClipsOversizedContent(TextImageRelation relation)
+    public void CheckBox_ToggleSwitch_AutoSize_OversizedImage_RendersCaptionPixels(TextImageRelation relation)
     {
         using SystemVisualSettingsTestScope settingsScope = new(
             clientAreaAnimationEnabled: false,
@@ -1336,23 +1339,26 @@ public class CheckBoxTests : AbstractButtonBaseTests
         Assert.Equal(withImage.GetPreferredSize(Size.Empty), withImage.Size);
         using Bitmap rendered = new(withImage.Width, withImage.Height);
         withImage.DrawToBitmap(rendered, withImage.ClientRectangle);
-        int imagePixels = CountPixels(rendered, Color.Magenta);
         Rendering.CheckBox.ToggleSwitchMetrics metrics = Rendering.CheckBox.ToggleSwitchMetrics.Create(withImage);
         Rectangle textArea = Rendering.CheckBox.AnimatedToggleSwitchRenderer.GetTextBounds(
             withImage,
             withImage.RtlTranslatedCheckAlign,
             metrics);
         Rectangle visibleText = GetPixelBounds(rendered, Color.Black, textArea);
-        bool completeCaption = CheckBoxToggleSwitchTests.HasCompleteCaption(
-            withImage,
-            rendered,
-            textArea,
-            out string diagnostic);
-
-        Assert.Equal(0, imagePixels);
+        Rectangle visibleImage = GetPixelBounds(rendered, Color.Magenta, withImage.ClientRectangle);
+        Assert.True(image.Height > withImage.ClientSize.Height);
         Assert.False(visibleText.IsEmpty, $"Relation {relation} should render caption pixels.");
-        bool expectedCompleteCaption = relation is TextImageRelation.ImageAboveText or TextImageRelation.TextAboveImage;
-        Assert.True(expectedCompleteCaption == completeCaption, diagnostic);
+        if (!visibleImage.IsEmpty)
+        {
+            Assert.True(relation switch
+            {
+                TextImageRelation.ImageAboveText => visibleImage.Bottom <= visibleText.Top,
+                TextImageRelation.TextAboveImage => visibleText.Bottom <= visibleImage.Top,
+                TextImageRelation.ImageBeforeText => visibleImage.Right <= visibleText.Left,
+                TextImageRelation.TextBeforeImage => visibleText.Right <= visibleImage.Left,
+                _ => false
+            }, $"Incorrect image/text order for {relation}: image {visibleImage}, text {visibleText}.");
+        }
     }
 
     [WinFormsTheory]
