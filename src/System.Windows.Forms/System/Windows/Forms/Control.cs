@@ -10507,7 +10507,7 @@ public unsafe partial class Control :
             // Update window font before scaling, as controls often use font metrics during scaling.
             if (causedByFontChanged)
             {
-                if (ScaleHelper.IsScalingRequirementMet && !GetStyle(ControlStyles.UserPaint) && !IsFontSet())
+                if (IsHandleCreated && ScaleHelper.IsScalingRequirementMet && !GetStyle(ControlStyles.UserPaint) && !IsFontSet())
                 {
                     SetWindowFont();
                 }

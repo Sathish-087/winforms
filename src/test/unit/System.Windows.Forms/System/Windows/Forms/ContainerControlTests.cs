@@ -6,6 +6,8 @@
 using System.ComponentModel;
 using System.Drawing;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Windows.Forms.TestUtilities;
 using Microsoft.DotNet.RemoteExecutor;
 using Point = System.Drawing.Point;
@@ -602,6 +604,94 @@ public class ContainerControlTests
             (int)Math.Round(childBounds.Height * factor.Height)));
         container.IsHandleCreated.Should().Be(createHandleOnResize);
         fontChanged.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContainerControl_Font_Set_NonUserPaintContainerPreservesHandleAndNativeFont(bool createHandleBeforeFontChange)
+    {
+        using RemoteInvokeHandle handle = RemoteExecutor.Invoke(handleCreated =>
+        {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2).Should().BeTrue();
+            Exception exception = null;
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    ScaleHelper.IsThreadPerMonitorV2Aware.Should().BeTrue();
+                    ScaleHelper.IsScalingRequirementMet.Should().BeTrue();
+                    bool createHandle = bool.Parse(handleCreated);
+                    using Font font = new(Control.DefaultFont.FontFamily, Control.DefaultFont.Size * 2);
+                    using ContainerControl parent = new() { AutoScaleMode = AutoScaleMode.Font };
+                    using NativeFontContainer container = new()
+                    {
+                        Bounds = new Rectangle(40, 50, 100, 80),
+                        Visible = false
+                    };
+                    using Button child = new() { Bounds = new Rectangle(20, 30, 40, 50) };
+                    parent.Controls.Add(container);
+                    container.Controls.Add(child);
+                    Assert.NotEqual(IntPtr.Zero, parent.Handle);
+                    parent.PerformAutoScale();
+                    Assert.False(container.IsHandleCreated);
+                    Assert.False(child.IsHandleCreated);
+                    int handleCreatedCount = 0;
+                    container.HandleCreated += (_, _) => handleCreatedCount++;
+                    if (createHandle)
+                    {
+                        Assert.NotEqual(IntPtr.Zero, container.Handle);
+                    }
+
+                    int fontMessageCount = container.FontMessageCount;
+                    SizeF dimensions = parent.CurrentAutoScaleDimensions;
+                    Rectangle containerBounds = container.Bounds;
+                    Rectangle childBounds = child.Bounds;
+
+                    parent.Font = font;
+
+                    SizeF factor = ContainerControl.GetCurrentAutoScaleFactor(parent.CurrentAutoScaleDimensions, dimensions);
+                    factor.Width.Should().BeGreaterThan(1);
+                    factor.Height.Should().BeGreaterThan(1);
+                    container.Bounds.Should().Be(new Rectangle(
+                        (int)Math.Round(containerBounds.X * factor.Width),
+                        (int)Math.Round(containerBounds.Y * factor.Height),
+                        (int)Math.Round(containerBounds.Width * factor.Width),
+                        (int)Math.Round(containerBounds.Height * factor.Height)));
+                    child.Bounds.Should().Be(new Rectangle(
+                        (int)Math.Round(childBounds.X * factor.Width),
+                        (int)Math.Round(childBounds.Y * factor.Height),
+                        (int)Math.Round(childBounds.Width * factor.Width),
+                        (int)Math.Round(childBounds.Height * factor.Height)));
+                    container.Font.Should().BeSameAs(font);
+                    container.IsHandleCreated.Should().Be(createHandle);
+                    handleCreatedCount.Should().Be(createHandle ? 1 : 0);
+
+                    if (!createHandle)
+                    {
+                        container.FontMessageCount.Should().Be(fontMessageCount);
+                        Assert.NotEqual(IntPtr.Zero, container.Handle);
+                    }
+
+                    handleCreatedCount.Should().Be(1);
+                    container.FontMessageCount.Should().BeGreaterThan(fontMessageCount);
+                    container.LastFontHandle.Should().Be((nint)(WPARAM)container.FontHandle);
+                }
+                catch (Exception ex)
+                {
+                    exception = ex;
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join();
+            if (exception is not null)
+            {
+                ExceptionDispatchInfo.Capture(exception).Throw();
+            }
+        }, createHandleBeforeFontChange.ToString());
+
+        handle.ExitCode.Should().Be(RemoteExecutor.SuccessExitCode);
     }
 
     [WinFormsTheory]
@@ -1774,6 +1864,29 @@ public class ContainerControlTests
     private class SubControl : Control
     {
         public new void SetStyle(ControlStyles flag, bool value) => base.SetStyle(flag, value);
+    }
+
+    /// <summary>
+    ///  Records native font updates for a control without user painting.
+    /// </summary>
+    private sealed class NativeFontContainer : ContainerControl
+    {
+        public NativeFontContainer() => SetStyle(ControlStyles.UserPaint, false);
+
+        public int FontMessageCount { get; private set; }
+
+        public nint LastFontHandle { get; private set; }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == (int)PInvokeCore.WM_SETFONT)
+            {
+                FontMessageCount++;
+                LastFontHandle = m.WParam;
+            }
+
+            base.WndProc(ref m);
+        }
     }
 
     public class SubContainerControl : ContainerControl
