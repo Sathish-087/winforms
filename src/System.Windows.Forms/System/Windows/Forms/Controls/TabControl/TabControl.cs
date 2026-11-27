@@ -2088,6 +2088,23 @@ public partial class TabControl : Control
                 NMHDR* nmhdr = (NMHDR*)(nint)m.LParamInternal;
                 switch (nmhdr->code)
                 {
+                    case PInvoke.TCN_FOCUSCHANGE:
+                        if (m.MsgInternal == MessageId.WM_REFLECT_NOTIFY
+                            && IsAccessibilityObjectCreated
+                            && IsHandleCreated
+                            && nmhdr->hwndFrom == HWND
+                            && Focused)
+                        {
+                            int focusedIndex = (int)PInvokeCore.SendMessage(this, PInvoke.TCM_GETCURFOCUS);
+                            if (focusedIndex >= 0 && focusedIndex < TabPages.Count)
+                            {
+                                TabPages[focusedIndex].TabAccessibilityObject.RaiseAutomationEvent(
+                                    UIA_EVENT_ID.UIA_AutomationFocusChangedEventId);
+                            }
+                        }
+
+                        break;
+
                     // new switch added to prevent the TabControl from changing to next TabPage ...
                     // in case of validation cancelled...
                     // Turn  tabControlState[State.UISelection] = false and Return So that no WmSelChange() gets fired.

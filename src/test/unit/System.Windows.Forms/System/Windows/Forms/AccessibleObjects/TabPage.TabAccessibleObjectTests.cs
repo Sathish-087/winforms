@@ -826,6 +826,114 @@ public class TabPage_TabAccessibleObjectTests
         Assert.True(tabControl.IsHandleCreated);
     }
 
+    [WinFormsTheory]
+    [InlineData(TabAppearance.Buttons)]
+    [InlineData(TabAppearance.FlatButtons)]
+    public void TabAccessibleObject_ArrowKeys_RaiseFocusChangedForFocusedTab(TabAppearance appearance)
+    {
+        using Form form = new();
+        using TabControl tabControl = new() { Appearance = appearance };
+        TabPageCollection pages = tabControl.TabPages;
+        pages.AddRange([new(), new()]);
+        form.Controls.Add(tabControl);
+        form.Show();
+        Assert.True(tabControl.Focus());
+        Assert.IsType<TabControlAccessibleObject>(tabControl.AccessibilityObject);
+
+        SubTabAccessibleObject first = new(pages[0]);
+        SubTabAccessibleObject second = new(pages[1]);
+        pages[0].TestAccessor.Dynamic._tabAccessibilityObject = first;
+        pages[1].TestAccessor.Dynamic._tabAccessibilityObject = second;
+
+        KeyboardSimulator.KeyPress(tabControl, Keys.Right);
+        Assert.Equal(0, tabControl.SelectedIndex);
+        Assert.Equal(1, (int)PInvokeCore.SendMessage(tabControl, PInvoke.TCM_GETCURFOCUS));
+        Assert.Equal(0, first.CallFocusChangedEventCount);
+        Assert.Equal(1, second.CallFocusChangedEventCount);
+        Assert.Equal(0, second.CallSelectionItemEventCount);
+
+        KeyboardSimulator.KeyPress(tabControl, Keys.Right);
+        Assert.Equal(1, second.CallFocusChangedEventCount);
+
+        KeyboardSimulator.KeyPress(tabControl, Keys.Left);
+        Assert.Equal(0, tabControl.SelectedIndex);
+        Assert.Equal(0, (int)PInvokeCore.SendMessage(tabControl, PInvoke.TCM_GETCURFOCUS));
+        Assert.Equal(1, first.CallFocusChangedEventCount);
+        Assert.Equal(1, second.CallFocusChangedEventCount);
+
+        KeyboardSimulator.KeyPress(tabControl, Keys.Right);
+        KeyboardSimulator.KeyPress(tabControl, Keys.Space);
+        Application.DoEvents();
+        Assert.Equal(1, tabControl.SelectedIndex);
+        Assert.Equal(3, second.CallFocusChangedEventCount);
+        Assert.Equal(1, second.CallSelectionItemEventCount);
+    }
+
+    [WinFormsTheory]
+    [InlineData(TabAppearance.Buttons)]
+    [InlineData(TabAppearance.FlatButtons)]
+    public unsafe void TabAccessibleObject_FocusChange_DoesNotRaiseEventWithoutTabControlAccessibleObject(TabAppearance appearance)
+    {
+        using Form form = new();
+        using TabControl tabControl = new() { Appearance = appearance };
+        TabPageCollection pages = tabControl.TabPages;
+        pages.AddRange([new(), new()]);
+        form.Controls.Add(tabControl);
+        form.Show();
+        Assert.True(tabControl.Focus());
+
+        KeyboardSimulator.KeyPress(tabControl, Keys.Right);
+        Assert.Equal(0, tabControl.SelectedIndex);
+        Assert.Equal(1, (int)PInvokeCore.SendMessage(tabControl, PInvoke.TCM_GETCURFOCUS));
+
+        SubTabAccessibleObject second = new(pages[1]);
+        pages[1].TestAccessor.Dynamic._tabAccessibilityObject = second;
+        _ = tabControl.AccessibilityObject;
+        tabControl.ReleaseUiaProvider(tabControl.HWND);
+        Assert.True(tabControl.Focused);
+        Assert.False(tabControl.IsAccessibilityObjectCreated);
+
+        // A native accessibility query can recreate the provider during a key press.
+        NMHDR notification = new() { hwndFrom = tabControl.HWND, code = PInvoke.TCN_FOCUSCHANGE };
+        PInvokeCore.SendMessage(tabControl, (uint)MessageId.WM_REFLECT_NOTIFY, 0, (LPARAM)(&notification));
+
+        Assert.True(tabControl.Focused);
+        Assert.Equal(0, tabControl.SelectedIndex);
+        Assert.Equal(1, (int)PInvokeCore.SendMessage(tabControl, PInvoke.TCM_GETCURFOCUS));
+        Assert.Equal(0, second.CallFocusChangedEventCount);
+        Assert.False(tabControl.IsAccessibilityObjectCreated);
+
+        _ = tabControl.AccessibilityObject;
+        PInvokeCore.SendMessage(tabControl, (uint)MessageId.WM_REFLECT_NOTIFY, 0, (LPARAM)(&notification));
+        Assert.Equal(1, second.CallFocusChangedEventCount);
+    }
+
+    [WinFormsFact]
+    public unsafe void TabAccessibleObject_FocusChange_DoesNotRaiseEventWithoutFocusOrAccessibleObject()
+    {
+        using TabControl tabControl = new() { Appearance = TabAppearance.Buttons };
+        TabPageCollection pages = tabControl.TabPages;
+        pages.AddRange([new(), new()]);
+        tabControl.CreateControl();
+
+        SubTabAccessibleObject second = new(pages[1]);
+        pages[1].TestAccessor.Dynamic._tabAccessibilityObject = second;
+        Assert.False(tabControl.IsAccessibilityObjectCreated);
+
+        PInvokeCore.SendMessage(tabControl, PInvoke.TCM_SETCURFOCUS, 1);
+
+        Assert.Equal(1, (int)PInvokeCore.SendMessage(tabControl, PInvoke.TCM_GETCURFOCUS));
+        Assert.False(tabControl.Focused);
+        NMHDR notification = new() { hwndFrom = tabControl.HWND, code = PInvoke.TCN_FOCUSCHANGE };
+        PInvokeCore.SendMessage(tabControl, (uint)MessageId.WM_REFLECT_NOTIFY, 0, (LPARAM)(&notification));
+        Assert.Equal(0, second.CallFocusChangedEventCount);
+        Assert.False(tabControl.IsAccessibilityObjectCreated);
+
+        Assert.IsType<TabControlAccessibleObject>(tabControl.AccessibilityObject);
+        PInvokeCore.SendMessage(tabControl, (uint)MessageId.WM_REFLECT_NOTIFY, 0, (LPARAM)(&notification));
+        Assert.Equal(0, second.CallFocusChangedEventCount);
+    }
+
     [WinFormsFact]
     public void TabAccessibleObject_OnGotFocus_InvokeTabAccessibleObject_RaiseAutomationEvent()
     {
