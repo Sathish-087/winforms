@@ -11105,6 +11105,7 @@ public unsafe partial class Control :
                         _parent?.UpdateChildZOrder(this);
 
                         Application.UnparkHandle(this, _window.DpiAwarenessContext);
+                        OnNativeParentChanged();
                     }
                 }
             }
@@ -11121,6 +11122,10 @@ public unsafe partial class Control :
                 Application.UnparkHandle(this, _window.DpiAwarenessContext);
             }
         }
+    }
+
+    private protected virtual void OnNativeParentChanged()
+    {
     }
 
     private protected void SetState(States flag, bool value)

@@ -2769,30 +2769,32 @@ public partial class ComboBox : ListControl
         ((EventHandler?)Events[s_dropDownStyleEvent])?.Invoke(this, e);
     }
 
-    /// <inheritdoc/>
-    protected override void OnParentChanged(EventArgs e)
+    private protected override void OnNativeParentChanged()
     {
-        base.OnParentChanged(e);
-
         if (!ScaleHelper.IsThreadPerMonitorV2Aware
             || !IsHandleCreated
-            || ParentInternal is null
-            || !ParentInternal.IsHandleCreated)
-        {
-            return;
-        }
-
-        // During remove/add reparenting the HWND can still be parked here.
-        // Recreate only when the control's managed DPI differs from its destination parent.
-        if (DeviceDpi == ParentInternal.DeviceDpi
-            && (DropDownStyle == ComboBoxStyle.Simple || Height == PreferredHeight))
+            || Disposing
+            || IsDisposed
+            || ParentInternal is not { IsHandleCreated: true } parent
+            || PInvoke.GetParent(this) != parent.HWNDInternal
+            || DrawMode != DrawMode.Normal
+            || DropDownStyle == ComboBoxStyle.Simple
+            || DeviceDpi != parent.DeviceDpi
+            || (int)PInvoke.GetDpiForWindow(this) != parent.DeviceDpi)
         {
             return;
         }
 
         ResetHeightCache();
         CommonProperties.xClearPreferredSizeCache(this);
-        RecreateHandle();
+
+        int height = Height;
+        if (height == PreferredHeight)
+        {
+            return;
+        }
+
+        PInvokeCore.SendMessage(this, PInvokeCore.WM_SETFONT, (WPARAM)FontHandle, (LPARAM)(BOOL)false);
     }
 
     /// <summary>

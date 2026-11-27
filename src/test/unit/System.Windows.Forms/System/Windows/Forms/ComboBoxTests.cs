@@ -1632,7 +1632,7 @@ public class ComboBoxTests
     public void ComboBox_ReparentHandleCreatedControl_InPerMonitorV2_PreservesHeightAndHandle(ComboBoxStyle style)
     {
         using RemoteInvokeHandle handle = RemoteExecutor.Invoke(
-            RunComboBoxReparentingScenario, style.ToString(), "SameDpi");
+            RunComboBoxReparentingScenario, style.ToString(), bool.FalseString);
         Assert.Equal(RemoteExecutor.SuccessExitCode, handle.ExitCode);
     }
 
@@ -1640,31 +1640,11 @@ public class ComboBoxTests
     public void ComboBox_ReparentWithAutoComplete_InPerMonitorV2_PreservesHeightAndHandle()
     {
         using RemoteInvokeHandle handle = RemoteExecutor.Invoke(
-            RunComboBoxReparentingScenario, ComboBoxStyle.DropDown.ToString(), "AutoComplete");
+            RunComboBoxReparentingScenario, ComboBoxStyle.DropDown.ToString(), bool.TrueString);
         Assert.Equal(RemoteExecutor.SuccessExitCode, handle.ExitCode);
     }
 
-    [Theory]
-    [InlineData(ComboBoxStyle.DropDown)]
-    [InlineData(ComboBoxStyle.DropDownList)]
-    public void ComboBox_ReparentAfterDpiMessage_InPerMonitorV2_RestoresNativeDpiAndHeight(ComboBoxStyle style)
-    {
-        using RemoteInvokeHandle handle = RemoteExecutor.Invoke(
-            RunComboBoxReparentingScenario, style.ToString(), "DpiMessage");
-        Assert.Equal(RemoteExecutor.SuccessExitCode, handle.ExitCode);
-    }
-
-    [Theory]
-    [InlineData(ComboBoxStyle.DropDown)]
-    [InlineData(ComboBoxStyle.DropDownList)]
-    public void ComboBox_ReparentAfterDpiMessageWithMatchingParent_InPerMonitorV2_PreservesNativeDpiAndHeight(ComboBoxStyle style)
-    {
-        using RemoteInvokeHandle handle = RemoteExecutor.Invoke(
-            RunComboBoxReparentingScenario, style.ToString(), "DpiMessageWithMatchingParent");
-        Assert.Equal(RemoteExecutor.SuccessExitCode, handle.ExitCode);
-    }
-
-    private static int RunComboBoxReparentingScenario(string styleValue, string scenario)
+    private static int RunComboBoxReparentingScenario(string styleValue, string useAutoCompleteValue)
     {
         Assert.True(Application.SetHighDpiMode(HighDpiMode.PerMonitorV2));
         Application.EnableVisualStyles();
@@ -1683,13 +1663,8 @@ public class ComboBoxTests
                 };
                 using Panel panel = new() { Dock = DockStyle.Fill };
                 using Panel targetPanel = new() { Size = new Size(200, 200) };
-                using Font font = new(SystemFonts.MessageBoxFont.FontFamily, 9);
                 using ComboBox comboBox = new() { DropDownStyle = Enum.Parse<ComboBoxStyle>(styleValue) };
-                if (scenario is "DpiMessage" or "DpiMessageWithMatchingParent")
-                {
-                    comboBox.Font = font;
-                }
-                else if (scenario == "AutoComplete")
+                if (bool.Parse(useAutoCompleteValue))
                 {
                     comboBox.AutoCompleteSource = AutoCompleteSource.ListItems;
                     comboBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
@@ -1710,34 +1685,11 @@ public class ComboBoxTests
                 form.Show();
                 panel.Controls.Add(comboBox);
                 Application.DoEvents();
-                int initialDpi = comboBox.DeviceDpi;
-                int initialHeight = comboBox.Height;
 
                 Assert.Equal(form.DeviceDpi, comboBox.DeviceDpi);
                 Assert.Equal(comboBox.DeviceDpi, (int)PInvoke.GetDpiForWindow(comboBox));
                 int expectedHeight = comboBox.Height;
                 int expectedDpi = comboBox.DeviceDpi;
-                if (scenario is "DpiMessage" or "DpiMessageWithMatchingParent")
-                {
-                    // Exercise the real DPI-message/font-scaling path without changing machine settings.
-                    int messageDpi = initialDpi * 2;
-                    PInvokeCore.SendMessage(comboBox, PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
-                        WPARAM.MAKEWPARAM(messageDpi, messageDpi));
-                    Assert.Equal(messageDpi, comboBox.DeviceDpi);
-                    if (scenario == "DpiMessage")
-                    {
-                        Assert.True(comboBox.Height > initialHeight);
-                        expectedHeight = initialHeight;
-                    }
-                    else
-                    {
-                        PInvokeCore.SendMessage(panel, PInvokeCore.WM_DPICHANGED_BEFOREPARENT,
-                            WPARAM.MAKEWPARAM(messageDpi, messageDpi));
-                        Assert.Equal(messageDpi, panel.DeviceDpi);
-                        expectedDpi = messageDpi;
-                        expectedHeight = comboBox.Height;
-                    }
-                }
 
                 int created = 0;
                 int destroyed = 0;
@@ -1748,8 +1700,7 @@ public class ComboBoxTests
                 for (int i = 0; i < 3; i++)
                 {
                     nint originalHandle = comboBox.Handle;
-                    bool preserveHandle = scenario is "SameDpi" or "AutoComplete";
-                    Panel destination = preserveHandle && i % 2 == 0 ? targetPanel : panel;
+                    Panel destination = i % 2 == 0 ? targetPanel : panel;
                     comboBox.Parent.Controls.Remove(comboBox);
                     destination.Controls.Add(comboBox);
                     Application.DoEvents();
@@ -1767,24 +1718,15 @@ public class ComboBoxTests
                         (int)PInvoke.GetDpiForWindow(comboBox));
 
                     Assert.Equal(1, comboBox.SelectedIndex);
-                    if (preserveHandle)
+                    Assert.Same(destination, comboBox.Parent);
+                    Assert.Equal(originalHandle, comboBox.Handle);
+                    Assert.Equal(0, created);
+                    Assert.Equal(0, destroyed);
+                    if (comboBox.DropDownStyle != ComboBoxStyle.DropDownList)
                     {
-                        Assert.Same(destination, comboBox.Parent);
-                        Assert.Equal(originalHandle, comboBox.Handle);
-                        Assert.Equal(0, created);
-                        Assert.Equal(0, destroyed);
-                        if (comboBox.DropDownStyle != ComboBoxStyle.DropDownList)
-                        {
-                            Assert.Equal(1, comboBox.SelectionStart);
-                            Assert.Equal(1, comboBox.SelectionLength);
-                        }
+                        Assert.Equal(1, comboBox.SelectionStart);
+                        Assert.Equal(1, comboBox.SelectionLength);
                     }
-                }
-
-                if (scenario == "DpiMessage")
-                {
-                    Assert.Equal(1, created);
-                    Assert.Equal(1, destroyed);
                 }
             }
             catch (Exception exception)

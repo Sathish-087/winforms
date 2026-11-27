@@ -483,6 +483,11 @@ public partial class ComboBox
     /// </summary>
     private unsafe void ApplyModernComboLayout()
     {
+        if (Disposing || IsDisposed)
+        {
+            return;
+        }
+
         if (!IsHandleCreated)
         {
             ApplyManagedPreferredHeightBeforeHandle();
