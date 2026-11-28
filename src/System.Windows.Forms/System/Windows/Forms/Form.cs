@@ -4896,6 +4896,26 @@ public partial class Form : ContainerControl
 
         return false;
     }
+
+    internal (KioskModeManager Manager, Form Form, bool KeyHandled)? GetDeferredKioskModeEscape(
+        Control target, ref Message message)
+    {
+        for (Form? form = this; form is not null; form = form.MdiParent)
+        {
+            if (form.Properties.TryGetValue(s_propKioskModeManagers, out List<KioskModeManager>? managers))
+            {
+                for (int i = managers.Count - 1; i >= 0; i--)
+                {
+                    if (managers[i].IsDeferredEscapeKey(target, ref message))
+                    {
+                        return (managers[i], form, managers[i].EscapeKeyHandled);
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
 #endif
 
     /// <summary>

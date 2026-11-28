@@ -1051,6 +1051,68 @@ public class KioskModeManagerTests
         Assert.True(manager.FullScreen);
     }
 
+    [WinFormsFact]
+    public void KioskModeManager_Escape_EditableAutoCompleteComboBoxClosesDropDownWithoutExitingFullScreen()
+    {
+        using Form form = new();
+        using ComboBox comboBox = new()
+        {
+            DropDownStyle = ComboBoxStyle.DropDown,
+            AutoCompleteSource = AutoCompleteSource.ListItems,
+            AutoCompleteMode = AutoCompleteMode.SuggestAppend
+        };
+        comboBox.Items.AddRange(["One", "Other"]);
+        form.Controls.Add(comboBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Assert.True(comboBox.Focus());
+        comboBox.Text = "O";
+        comboBox.DroppedDown = true;
+        Assert.True(comboBox.DroppedDown);
+
+        nint editorHandle = comboBox.TestAccessor.Dynamic._childEdit.Handle;
+        Assert.True(PInvokeCore.PostMessage((HWND)editorHandle, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.False(comboBox.DroppedDown);
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Escape_OpenComboBoxWithCancelButton_OnlyClosesDropDown()
+    {
+        using Form form = new();
+        using ComboBox comboBox = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+        using Button cancelButton = new();
+        comboBox.Items.Add("One");
+        comboBox.SelectedIndex = 0;
+        form.Controls.Add(comboBox);
+        form.Controls.Add(cancelButton);
+        form.CancelButton = cancelButton;
+        int clicks = 0;
+        cancelButton.Click += (_, _) => clicks++;
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Assert.True(comboBox.Focus());
+        comboBox.DroppedDown = true;
+        Assert.True(comboBox.DroppedDown);
+
+        Assert.True(PInvokeCore.PostMessage(comboBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.False(comboBox.DroppedDown);
+        Assert.True(manager.FullScreen);
+        Assert.Equal(0, clicks);
+
+        manager.EscapeExitsFullScreen = false;
+        Assert.True(PInvokeCore.PostMessage(comboBox, PInvokeCore.WM_KEYUP, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Assert.True(PInvokeCore.PostMessage(comboBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.Equal(1, clicks);
+        Assert.True(manager.FullScreen);
+    }
+
     [WinFormsTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1189,6 +1251,320 @@ public class KioskModeManagerTests
             Assert.Equal(2, received);
             Assert.True(manager.FullScreen);
         }
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Escape_InMdiChild_ExitsParentFullScreen()
+    {
+        using Form parent = new() { IsMdiContainer = true };
+        using Form child = new() { MdiParent = parent };
+        using TextBox textBox = new();
+        child.Controls.Add(textBox);
+        parent.Show();
+        child.Show();
+        using KioskModeManager manager = new() { ContainerControl = parent, FullScreen = true };
+        int escapeCount = 0;
+        textBox.PreviewKeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                escapeCount++;
+            }
+        };
+        Assert.True(manager.FullScreen);
+        Assert.True(child.Visible);
+        child.Activate();
+        Assert.True(textBox.Focus());
+        Assert.True(textBox.Focused);
+        Assert.Same(child, parent.ActiveMdiChild);
+
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.Equal(1, escapeCount);
+        Assert.False(manager.FullScreen);
+        Assert.False(child.IsDisposed);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Escape_KeyUpProcessedDuringKeyDown_StillExitsFullScreen()
+    {
+        using Form form = new() { KeyPreview = true };
+        using TextBox textBox = new();
+        form.Controls.Add(textBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Assert.True(manager.FullScreen);
+        int keyDownCount = 0;
+        int keyUpCount = 0;
+        bool keyUpPosted = false;
+        bool keyUpProcessedDuringKeyDown = false;
+        form.KeyUp += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                keyUpCount++;
+            }
+        };
+        form.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                keyDownCount++;
+                keyUpPosted = PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYUP, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+                Application.DoEvents();
+                keyUpProcessedDuringKeyDown = keyUpCount == 1;
+            }
+        };
+
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.Equal(1, keyDownCount);
+        Assert.True(keyUpPosted);
+        Assert.True(keyUpProcessedDuringKeyDown);
+        Assert.Equal(1, keyUpCount);
+        Assert.False(manager.FullScreen);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Escape_NestedHandledEscape_DoesNotSuppressOuterEscape()
+    {
+        using Form form = new() { KeyPreview = true };
+        using TextBox outer = new();
+        using EscapeInputControl inner = new();
+        form.Controls.Add(outer);
+        form.Controls.Add(inner);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Assert.True(manager.FullScreen);
+        int outerCount = 0;
+        int innerCount = 0;
+        int fullScreenChangedCount = 0;
+        bool innerPosted = false;
+        bool innerHandledDuringOuter = false;
+        bool fullScreenAfterInner = false;
+        manager.FullScreenChanged += (_, _) => fullScreenChangedCount++;
+        inner.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                innerCount++;
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+        form.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape && outerCount++ == 0)
+            {
+                innerPosted = PInvokeCore.PostMessage(inner, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+                Application.DoEvents();
+                innerHandledDuringOuter = innerCount == 1;
+                fullScreenAfterInner = manager.FullScreen;
+            }
+        };
+
+        Assert.True(PInvokeCore.PostMessage(outer, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.True(innerPosted);
+        Assert.True(innerHandledDuringOuter);
+        Assert.Equal(1, innerCount);
+        Assert.Equal(2, outerCount);
+        Assert.True(fullScreenAfterInner);
+        Assert.False(manager.FullScreen);
+        Assert.Equal(1, fullScreenChangedCount);
+    }
+
+    [WinFormsTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskModeManager_Escape_OtherForm_PreservesCancelButtonBehavior(bool owned)
+    {
+        using Form managedForm = new();
+        using Form otherForm = new();
+        using TextBox textBox = new();
+        using Button cancelButton = new();
+        otherForm.Controls.Add(textBox);
+        otherForm.Controls.Add(cancelButton);
+        otherForm.CancelButton = cancelButton;
+        int clicks = 0;
+        cancelButton.Click += (_, _) => clicks++;
+        managedForm.Show();
+        using KioskModeManager manager = new() { ContainerControl = managedForm, FullScreen = true };
+        if (owned)
+        {
+            otherForm.Show(managedForm);
+        }
+        else
+        {
+            otherForm.Show();
+        }
+
+        Assert.True(textBox.Focus());
+        Assert.True(textBox.Focused);
+        Assert.True(manager.FullScreen);
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.Equal(1, clicks);
+        Assert.True(manager.FullScreen);
+    }
+
+    [WinFormsTheory]
+    [InlineData(Keys.ShiftKey, Keys.Shift)]
+    [InlineData(Keys.ControlKey, Keys.Control)]
+    [InlineData(Keys.Menu, Keys.Alt)]
+    public unsafe void KioskModeManager_Escape_WithModifier_DoesNotExitFullScreen(Keys modifierKey, Keys modifier)
+    {
+        using Form form = new();
+        using TextBox textBox = new();
+        form.Controls.Add(textBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Keys previewedKey = Keys.None;
+        Keys dispatchedKey = Keys.None;
+        textBox.PreviewKeyDown += (_, e) => previewedKey = e.KeyData;
+        textBox.KeyDown += (_, e) => dispatchedKey = e.KeyData;
+        byte[] originalState = new byte[256];
+        fixed (byte* original = originalState)
+        {
+            Assert.True(PInvoke.GetKeyboardState(original));
+        }
+
+        byte[] testState = (byte[])originalState.Clone();
+        testState[(int)Keys.ShiftKey] = 0;
+        testState[(int)Keys.ControlKey] = 0;
+        testState[(int)Keys.Menu] = 0;
+        testState[(int)modifierKey] = 0x80;
+        try
+        {
+            fixed (byte* state = testState)
+            {
+                Assert.True(PInvoke.SetKeyboardState(state));
+            }
+
+            Assert.Equal(modifier, Control.ModifierKeys);
+            int messageId = (int)(modifier == Keys.Alt ? PInvokeCore.WM_SYSKEYDOWN : PInvokeCore.WM_KEYDOWN);
+            Message message = Message.Create(textBox.Handle, messageId, (nint)Keys.Escape, 1);
+            manager.TestAccessor.Dynamic.ProcessMessage(message);
+            PreProcessControlState preProcessState = Control.PreProcessControlMessageInternal(textBox, ref message);
+            Assert.Equal(modifier | Keys.Escape, previewedKey);
+            if (preProcessState != PreProcessControlState.MessageProcessed)
+            {
+                PInvokeCore.SendMessage(textBox, message.MsgInternal, message.WParamInternal, message.LParamInternal);
+                Assert.Equal(modifier | Keys.Escape, dispatchedKey);
+            }
+
+            Assert.True(manager.FullScreen);
+
+            testState[(int)modifierKey] = 0;
+            fixed (byte* state = testState)
+            {
+                Assert.True(PInvoke.SetKeyboardState(state));
+            }
+
+            Assert.Equal(Keys.None, Control.ModifierKeys);
+            message = Message.Create(textBox.Handle, (int)PInvokeCore.WM_KEYDOWN, (nint)Keys.Escape, 1);
+            manager.TestAccessor.Dynamic.ProcessMessage(message);
+            if (Control.PreProcessControlMessageInternal(textBox, ref message) != PreProcessControlState.MessageProcessed)
+            {
+                PInvokeCore.SendMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1);
+            }
+
+            Assert.False(manager.FullScreen);
+        }
+        finally
+        {
+            fixed (byte* original = originalState)
+            {
+                Assert.True(PInvoke.SetKeyboardState(original));
+            }
+        }
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Escape_HandleRecreatedDuringHandledEscape_NextEscapeExitsFullScreen()
+    {
+        using Form form = new() { KeyPreview = true };
+        using RecreatingTextBox textBox = new();
+        form.Controls.Add(textBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        nint originalHandle = textBox.Handle;
+        int keyDownCount = 0;
+        int handleCreatedCount = 0;
+        int handleDestroyedCount = 0;
+        int fullScreenChangedCount = 0;
+        textBox.HandleCreated += (_, _) => handleCreatedCount++;
+        textBox.HandleDestroyed += (_, _) => handleDestroyedCount++;
+        manager.FullScreenChanged += (_, _) => fullScreenChangedCount++;
+        form.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape && ++keyDownCount == 1)
+            {
+                textBox.RecreateHandle();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.Equal(1, keyDownCount);
+        Assert.Equal(1, handleCreatedCount);
+        Assert.Equal(1, handleDestroyedCount);
+        Assert.NotEqual(originalHandle, textBox.Handle);
+        Assert.True(manager.FullScreen);
+        Assert.Equal(0, fullScreenChangedCount);
+
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYUP, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.False(manager.FullScreen);
+        Assert.Equal(1, fullScreenChangedCount);
+    }
+
+    [WinFormsFact]
+    public void KioskModeManager_Escape_FullScreenChangedPumpsMessages_DoesNotDeliverEscapeCharacter()
+    {
+        using Form form = new() { KeyPreview = true };
+        using TextBox textBox = new();
+        form.Controls.Add(textBox);
+        form.Show();
+        using KioskModeManager manager = new() { ContainerControl = form, FullScreen = true };
+        Assert.True(manager.FullScreen);
+        int changedCount = 0;
+        int escapeKeyPressCount = 0;
+        bool markerPosted = false;
+        bool markerProcessedDuringEvent = false;
+        textBox.KeyPress += (_, e) =>
+        {
+            if (e.KeyChar == (char)Keys.Escape)
+            {
+                escapeKeyPressCount++;
+            }
+        };
+        manager.FullScreenChanged += (_, _) =>
+        {
+            changedCount++;
+            markerPosted = PInvokeCore.PostMessage(textBox, PInvokeCore.WM_CHAR, (WPARAM)'x', default);
+            Application.DoEvents();
+            markerProcessedDuringEvent = textBox.Text == "x";
+        };
+
+        Assert.True(PInvokeCore.PostMessage(textBox, PInvokeCore.WM_KEYDOWN, (WPARAM)(uint)Keys.Escape, (LPARAM)1));
+        Application.DoEvents();
+
+        Assert.False(manager.FullScreen);
+        Assert.Equal(1, changedCount);
+        Assert.True(markerPosted);
+        Assert.True(markerProcessedDuringEvent);
+        Assert.Equal("x", textBox.Text);
+        Assert.Equal(0, escapeKeyPressCount);
     }
 
     [WinFormsFact]
@@ -1480,6 +1856,11 @@ public class KioskModeManagerTests
 
         public void DispatchMessage(ref Message message)
             => base.WndProc(ref message);
+    }
+
+    private sealed class RecreatingTextBox : TextBox
+    {
+        public new void RecreateHandle() => base.RecreateHandle();
     }
 
     private sealed class EscapeComboBox : ComboBox

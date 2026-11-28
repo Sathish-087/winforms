@@ -867,26 +867,74 @@ public class KioskModeManager : Component, ISupportInitialize
         return true;
     }
 
+    internal bool IsDeferredEscapeKey(Control target, ref Message message)
+        => _escapeKeyDeferred
+            && ReferenceEquals(target, _escapeKeyTarget)
+            && message.HWND == _escapeKeyHwnd
+            && message.LParamInternal == _escapeKeyLParam;
+
+    internal bool EscapeKeyHandled => _escapeKeyHandled;
+
+    internal bool CompleteCapturedEscapeKey(Control target, ref Message message, bool handled, Form form, bool keyHandled)
+    {
+        if (!ReferenceEquals(_targetForm, form) || form.IsDisposed)
+        {
+            return false;
+        }
+
+        _escapeKeyDeferred = true;
+        _escapeKeyTarget = target;
+        _escapeKeyHwnd = message.HWND;
+        _escapeKeyLParam = message.LParamInternal;
+        _escapeKeyHandled = keyHandled;
+        return CompleteDeferredEscapeKey(target, ref message, handled);
+    }
+
     internal bool CompleteDeferredEscapeKey(Control target, ref Message message, bool handled)
     {
-        if (!_escapeKeyDeferred
-            || !ReferenceEquals(target, _escapeKeyTarget)
-            || message.HWND != _escapeKeyHwnd
-            || message.LParamInternal != _escapeKeyLParam)
+        if (!IsDeferredEscapeKey(target, ref message))
         {
             return false;
         }
 
         _escapeKeyDeferred = false;
-        if (handled || !ProcessEscapeKey())
+        if (handled)
         {
             return false;
         }
 
-        Dictionary<HWND, int> escapeKeyCharactersPending = _escapeKeyCharactersPending ??= [];
-        escapeKeyCharactersPending.TryGetValue(_escapeKeyHwnd, out int pendingCount);
-        escapeKeyCharactersPending[_escapeKeyHwnd] = pendingCount + 1;
-        return true;
+        HWND hwnd = message.HWND;
+        bool pendingCharacter = HasPendingEscapeCharacter(hwnd);
+        if (pendingCharacter)
+        {
+            Dictionary<HWND, int> pending = _escapeKeyCharactersPending ??= [];
+            pending.TryGetValue(hwnd, out int count);
+            pending[hwnd] = count + 1;
+        }
+
+        bool processed = ProcessEscapeKey();
+        if (!processed && pendingCharacter && _escapeKeyCharactersPending is { } characters
+            && characters.TryGetValue(hwnd, out int pendingCount))
+        {
+            if (pendingCount == 1)
+            {
+                characters.Remove(hwnd);
+            }
+            else
+            {
+                characters[hwnd] = pendingCount - 1;
+            }
+        }
+
+        return processed;
+    }
+
+    private static unsafe bool HasPendingEscapeCharacter(HWND hwnd)
+    {
+        MSG message = default;
+        return PInvokeCore.PeekMessage(
+                &message, hwnd, PInvokeCore.WM_CHAR, PInvokeCore.WM_CHAR, PEEK_MESSAGE_REMOVE_TYPE.PM_NOREMOVE)
+            && message.wParam == (WPARAM)(uint)Keys.Escape;
     }
 
     internal bool ProcessEscapeKey()

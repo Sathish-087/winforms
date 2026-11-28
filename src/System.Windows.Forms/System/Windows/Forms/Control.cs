@@ -9800,19 +9800,19 @@ public unsafe partial class Control :
     internal bool ProcessKeyMessageWithKioskMode(ref Message m)
     {
 #if NET11_0_OR_GREATER
-        Form? form = null;
+        (KioskModeManager Manager, Form Form, bool KeyHandled)? deferred = null;
         if (m.MsgInternal == PInvokeCore.WM_KEYDOWN
             && (Keys)(nint)m.WParamInternal == Keys.Escape)
         {
-            form = FindForm();
+            deferred = FindForm()?.GetDeferredKioskModeEscape(this, ref m);
         }
 #endif
         bool handled = ProcessKeyMessage(ref m);
 #if NET11_0_OR_GREATER
         if (m.MsgInternal == PInvokeCore.WM_KEYDOWN
             && (Keys)(nint)m.WParamInternal == Keys.Escape
-            && form is not null
-            && form.CompleteDeferredKioskModeEscape(this, ref m, handled))
+            && deferred is { } captured
+            && captured.Manager.CompleteCapturedEscapeKey(this, ref m, handled, captured.Form, captured.KeyHandled))
         {
             return true;
         }

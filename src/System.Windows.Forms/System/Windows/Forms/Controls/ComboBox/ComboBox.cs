@@ -1525,10 +1525,18 @@ public partial class ComboBox : ListControl
                 break;
             case PInvokeCore.WM_KEYDOWN:
             case PInvokeCore.WM_SYSKEYDOWN:
+                bool closingDropDown = AutoCompleteMode != AutoCompleteMode.None
+                    && (Keys)(nint)m.WParamInternal == Keys.Escape
+                    && DroppedDown;
                 if (SystemAutoCompleteEnabled && !ACNativeWindow.AutoCompleteActive)
                 {
                     _finder.FindDropDowns(false);
                 }
+
+                PreProcessControlState? dropDownKeyState = closingDropDown
+                    && !(DropDownStyle == ComboBoxStyle.Simple && m.HWnd == _childListBox!.Handle)
+                    ? PreProcessControlMessage(ref m)
+                    : null;
 
                 if (AutoCompleteMode != AutoCompleteMode.None)
                 {
@@ -1551,7 +1559,7 @@ public partial class ComboBox : ListControl
                 }
                 else
                 {
-                    if (PreProcessControlMessage(ref m) != PreProcessControlState.MessageProcessed)
+                    if ((dropDownKeyState ?? PreProcessControlMessage(ref m)) != PreProcessControlState.MessageProcessed)
                     {
                         if (ProcessKeyMessageWithKioskMode(ref m))
                         {
